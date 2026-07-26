@@ -1,0 +1,72 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "局外外观/皮肤配置（commerce-redesign T2）— 看广告解锁纯装饰内容，严格不影响任何数值"
+  },
+  "cosmetics": [
+    {
+      "id": "country_theme_iron_cross_gold",
+      "slot": "country_theme",
+      "name": "铁十字·金",
+      "description": "铁十字联邦金色主题色，工业重镇的荣耀徽记",
+      "adSlotId": "cosmetics_unlock",
+      "default": true
+    },
+    {
+      "id": "country_theme_red_alliance_crimson",
+      "slot": "country_theme",
+      "name": "赤色·朱",
+      "description": "赤色同盟朱红主题色，公社共治的鲜明旗帜",
+      "adSlotId": "cosmetics_unlock",
+      "default": false
+    },
+    {
+      "id": "map_skin_classic_parchment",
+      "slot": "map_skin",
+      "name": "经典羊皮纸",
+      "description": "默认羊皮纸风格地图，复古而内敛",
+      "adSlotId": "cosmetics_unlock",
+      "default": true
+    },
+    {
+      "id": "map_skin_naval_chart",
+      "slot": "map_skin",
+      "name": "航海蓝图",
+      "description": "海军蓝图风格地图，跨海工业巨头的制图传统",
+      "adSlotId": "cosmetics_unlock",
+      "default": false
+    },
+    {
+      "id": "ui_theme_brass_default",
+      "slot": "ui_theme",
+      "name": "黄铜·默认",
+      "description": "默认黄铜质感界面，沉稳而经典",
+      "adSlotId": "cosmetics_unlock",
+      "default": true
+    },
+    {
+      "id": "ui_theme_midnight_blue",
+      "slot": "ui_theme",
+      "name": "午夜蓝",
+      "description": "深邃午夜蓝界面，王冠群岛夜航的幽蓝",
+      "adSlotId": "cosmetics_unlock",
+      "default": false
+    },
+    {
+      "id": "unit_icon_standard",
+      "slot": "unit_icon",
+      "name": "标准制式",
+      "description": "默认标准制式部队图标，简洁清晰",
+      "adSlotId": "cosmetics_unlock",
+      "default": true
+    },
+    {
+      "id": "unit_icon_heraldic",
+      "slot": "unit_icon",
+      "name": "纹章风格",
+      "description": "复古纹章风格部队图标，樱岛协约的武家纹饰",
+      "adSlotId": "cosmetics_unlock",
+      "default": false
+    }
+  ]
+}

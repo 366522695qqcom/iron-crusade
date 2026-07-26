@@ -1,0 +1,40 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "局外可解锁内容配置（commerce-redesign T3）— 看广告解锁新剧本/新国家/新焦点树分支，属可用性解锁非数值优势"
+  },
+  "contents": [
+    {
+      "id": "scenario_storm_break",
+      "type": "scenario",
+      "name": "风暴骤起",
+      "description": "1936 架空剧本：欧洲局势骤紧，铁十字联邦工业崛起",
+      "adSlotId": "content_unlock",
+      "default": false
+    },
+    {
+      "id": "country_cedar_republic",
+      "type": "country",
+      "name": "雪松共和国",
+      "description": "架空中立国，依托山脉防线与外贸立国",
+      "adSlotId": "content_unlock",
+      "default": false
+    },
+    {
+      "id": "focus_branch_industry_deep",
+      "type": "focus_branch",
+      "name": "深度工业线",
+      "description": "工业集权线额外分支：解锁后可在焦点树选择深度工业化路径",
+      "adSlotId": "content_unlock",
+      "default": false
+    },
+    {
+      "id": "focus_branch_base_logistics",
+      "type": "focus_branch",
+      "name": "基础后勤线",
+      "description": "通用后勤分支：开局即可选用，无需看广告解锁",
+      "adSlotId": "content_unlock",
+      "default": true
+    }
+  ]
+}

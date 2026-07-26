@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "Day3 新手引导配置 - 作战与外交（spec A.3.1）",
+    "referenceDoc": "PROJECT.md 3.13 阶梯式新手引导 / spec Requirement: 阶梯式新手引导",
+    "designGoal": "Day2 全部任务完成后解锁，教学拉线攻势与外交按钮。脱敏（S.2）：使用「区域争端」「管控」术语，不出现宣战/占领。"
+  },
+  "day": 3,
+  "title": "作战与外交",
+  "description": "学习拉线攻势与外交按钮，发起区域争端并管控省份",
+  "triggerCondition": "day2_completed",
+  "tasks": [
+    {
+      "id": "day3_initiate_dispute",
+      "type": "initiate_dispute",
+      "target": 1,
+      "params": {},
+      "reward": {
+        "politicalPower": 30,
+        "resources": []
+      },
+      "guideText": "打开外交面板 → 选择目标国家 → 发起区域争端"
+    },
+    {
+      "id": "day3_control_province",
+      "type": "control_province",
+      "target": 1,
+      "params": {},
+      "reward": {
+        "politicalPower": 30,
+        "resources": [{ "type": "steel", "amount": 80 }]
+      },
+      "guideText": "对争端省份拉线攻势 → 推进部队 → 管控 1 个省份"
+    }
+  ],
+  "unlocks": ["initiate_dispute", "draw_front"]
+}

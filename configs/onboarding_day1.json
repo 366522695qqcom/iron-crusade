@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "Day1 新手引导配置 - 资源与工厂（spec A.3.1）",
+    "referenceDoc": "PROJECT.md 3.13 阶梯式新手引导 / spec Requirement: 阶梯式新手引导",
+    "designGoal": "首局快速对局完成后解锁，教学资源采集与工厂铺设基础。玩法重心倾斜（S.4.1）：工业资源优先教学，作战延后到 Day3。"
+  },
+  "day": 1,
+  "title": "资源与工厂",
+  "description": "学习资源采集与工厂铺设基础，迈出工业经营第一步",
+  "triggerCondition": "first_quick_battle_completed",
+  "tasks": [
+    {
+      "id": "day1_build_civ_factory",
+      "type": "build_building",
+      "target": 1,
+      "params": { "buildingType": "civilian_factory" },
+      "reward": {
+        "politicalPower": 20,
+        "resources": []
+      },
+      "guideText": "点击地图空地 → 选择民用工厂 → 确认建造"
+    },
+    {
+      "id": "day1_gather_steel",
+      "type": "gather_resource",
+      "target": 100,
+      "params": { "resourceType": "steel" },
+      "reward": {
+        "politicalPower": 20,
+        "resources": [{ "type": "oil", "amount": 30 }]
+      },
+      "guideText": "在矿区省份铺设矿场 → 等待钢铁自动采集进入储备条"
+    }
+  ],
+  "unlocks": ["factory_assignment", "resource_trade"]
+}

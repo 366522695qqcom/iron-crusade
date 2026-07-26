@@ -1,0 +1,104 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "每日任务池（B.1.1）- 配合长期存档培养日活习惯，每日 3 个小任务：建造类、生产类、作战类各 1"
+  },
+  "pools": {
+    "build": [
+      {
+        "id": "build_civ_factory_1",
+        "title": "今日建造 - 民用工厂",
+        "target": 1,
+        "params": { "buildingType": "civilian_factory" },
+        "reward": {
+          "politicalPower": 15,
+          "resources": [{ "type": "steel", "amount": 30 }]
+        }
+      },
+      {
+        "id": "build_mil_factory_1",
+        "title": "今日建造 - 军用工厂",
+        "target": 1,
+        "params": { "buildingType": "military_factory" },
+        "reward": {
+          "politicalPower": 20,
+          "resources": [{ "type": "steel", "amount": 40 }, { "type": "tungsten", "amount": 15 }]
+        }
+      },
+      {
+        "id": "upgrade_factory_2",
+        "title": "今日建造 - 升级工厂",
+        "target": 2,
+        "params": { "action": "upgrade_factory" },
+        "reward": {
+          "politicalPower": 25,
+          "resources": [{ "type": "oil", "amount": 50 }]
+        }
+      }
+    ],
+    "produce": [
+      {
+        "id": "produce_equipment_50",
+        "title": "今日生产 - 装备制造",
+        "target": 50,
+        "params": { "action": "produce_equipment" },
+        "reward": {
+          "politicalPower": 15,
+          "resources": [{ "type": "steel", "amount": 25 }, { "type": "tungsten", "amount": 10 }]
+        }
+      },
+      {
+        "id": "assign_factory_3",
+        "title": "今日生产 - 工厂分配",
+        "target": 3,
+        "params": { "action": "assign_factory" },
+        "reward": {
+          "politicalPower": 10,
+          "resources": [{ "type": "oil", "amount": 30 }]
+        }
+      },
+      {
+        "id": "trade_steel_100",
+        "title": "今日生产 - 资源贸易",
+        "target": 100,
+        "params": { "resourceType": "steel", "action": "trade" },
+        "reward": {
+          "politicalPower": 20,
+          "resources": [{ "type": "rubber", "amount": 20 }, { "type": "aluminum", "amount": 20 }]
+        }
+      }
+    ],
+    "combat": [
+      {
+        "id": "control_province_1",
+        "title": "今日争端 - 省份管控",
+        "target": 1,
+        "params": { "eventType": "provinceControlled", "action": "control_province" },
+        "reward": {
+          "politicalPower": 30,
+          "resources": [{ "type": "steel", "amount": 50 }, { "type": "oil", "amount": 40 }]
+        }
+      },
+      {
+        "id": "initiate_dispute_1",
+        "title": "今日争端 - 发起区域争端",
+        "target": 1,
+        "params": { "actionType": "initiateDispute", "action": "initiate_dispute" },
+        "reward": {
+          "politicalPower": 25,
+          "resources": [{ "type": "tungsten", "amount": 30 }]
+        }
+      },
+      {
+        "id": "dispute_resolved_1",
+        "title": "今日争端 - 争端结算",
+        "target": 1,
+        "params": { "eventType": "disputeResolved", "action": "dispute_resolved" },
+        "reward": {
+          "politicalPower": 40,
+          "resources": [{ "type": "steel", "amount": 60 }, { "type": "oil", "amount": 50 }, { "type": "aluminum", "amount": 25 }]
+        }
+      }
+    ]
+  }
+}

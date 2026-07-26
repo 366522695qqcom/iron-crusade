@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "国家初始配置 - 严格遵守 spec S 级脱敏要求：不出现 ideology / 法西斯 / 共产主义 / 民主字眼",
+    "developmentPathEnum": {
+      "industrial_authoritarian": "工业集权线",
+      "communal": "公社共治线",
+      "federal_republic": "联邦共和线"
+    },
+    "leaderNote": "代号仅供风格参考，不指向真实历史人物",
+    "factionNote": "阵营名完全架空，对应关系仅供开发参考，不出现在游戏内文案",
+    "referenceDoc": "PROJECT.md 第 4 章 4.1-4.3"
+  },
+  "factions": [
+    { "id": "iron_axis", "name": "钢铁轴心", "comment": "完全架空阵营名" },
+    { "id": "free_alliance", "name": "自由同盟", "comment": "完全架空阵营名" },
+    { "id": "third_international", "name": "第三国际", "comment": "完全架空阵营名" }
+  ],
+  "countries": [
+    {
+      "id": "iron_cross",
+      "name": "铁十字联邦",
+      "capitalProvinceId": 101,
+      "defaultDevelopmentPath": "industrial_authoritarian",
+      "leader": "铁血首相",
+      "factionId": "iron_axis",
+      "startingStability": 0.7,
+      "startingDisputeResolve": 0.5,
+      "startingPoliticalPower": 100,
+      "flavor": "工业重镇，装甲突击传统；代号仅供风格参考，不指向真实历史人物。"
+    },
+    {
+      "id": "red_alliance",
+      "name": "赤色同盟",
+      "capitalProvinceId": 201,
+      "defaultDevelopmentPath": "communal",
+      "leader": "红军统帅",
+      "factionId": "third_international",
+      "startingStability": 0.6,
+      "startingDisputeResolve": 0.7,
+      "startingPoliticalPower": 90,
+      "flavor": "广袤工业纵深，公社共治传统；代号仅供风格参考，不指向真实历史人物。"
+    },
+    {
+      "id": "free_states",
+      "name": "自由合众国",
+      "capitalProvinceId": 301,
+      "defaultDevelopmentPath": "federal_republic",
+      "leader": "新政领袖",
+      "factionId": "free_alliance",
+      "startingStability": 0.8,
+      "startingDisputeResolve": 0.4,
+      "startingPoliticalPower": 120,
+      "flavor": "跨海工业巨头，联邦共和传统；代号仅供风格参考，不指向真实历史人物。"
+    },
+    {
+      "id": "crown_isles",
+      "name": "王冠群岛",
+      "capitalProvinceId": 401,
+      "defaultDevelopmentPath": "federal_republic",
+      "leader": "雪茄首相",
+      "factionId": "free_alliance",
+      "startingStability": 0.75,
+      "startingDisputeResolve": 0.55,
+      "startingPoliticalPower": 110,
+      "flavor": "海军传统，全球殖民据点；代号仅供风格参考，不指向真实历史人物。"
+    },
+    {
+      "id": "sakura_pact",
+      "name": "樱岛协约",
+      "capitalProvinceId": 501,
+      "defaultDevelopmentPath": "industrial_authoritarian",
+      "leader": "幕府大将",
+      "factionId": "iron_axis",
+      "startingStability": 0.65,
+      "startingDisputeResolve": 0.6,
+      "startingPoliticalPower": 95,
+      "flavor": "岛国海军传统，工业集权路线；代号仅供风格参考，不指向真实历史人物。"
+    },
+    {
+      "id": "frankish_empire",
+      "name": "法兰克帝国",
+      "capitalProvinceId": 601,
+      "defaultDevelopmentPath": "federal_republic",
+      "leader": "堡垒统帅",
+      "factionId": "free_alliance",
+      "startingStability": 0.7,
+      "startingDisputeResolve": 0.5,
+      "startingPoliticalPower": 100,
+      "flavor": "防御工事与陆军传统；代号仅供风格参考，不指向真实历史人物。"
+    }
+  ]
+}

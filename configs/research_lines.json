@@ -1,0 +1,93 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "科研线配置 - spec implement-focus-research T2.1",
+    "costUnit": "节点数权重（推进时间基准 90s × cost）",
+    "referenceDoc": "spec T2.1 + PROJECT.md 3.6"
+  },
+  "lines": [
+    {
+      "id": "industry",
+      "name": "工业线",
+      "nodes": [
+        { "id": "ind_1", "name": "基础工业", "cost": 1, "bonus": { "type": "industry", "value": 0.05 } },
+        { "id": "ind_2", "name": "流水线生产", "cost": 1, "bonus": { "type": "industry", "value": 0.05 } },
+        { "id": "ind_3", "name": "集中规划", "cost": 2, "bonus": { "type": "industry", "value": 0.08 } },
+        { "id": "ind_4", "name": "重工业扩张", "cost": 2, "bonus": { "type": "industry", "value": 0.10 } },
+        { "id": "ind_5", "name": "自动化制造", "cost": 3, "bonus": { "type": "industry", "value": 0.12 } },
+        { "id": "ind_6", "name": "综合工业体系", "cost": 3, "bonus": { "type": "industry", "value": 0.15 } }
+      ]
+    },
+    {
+      "id": "electronics",
+      "name": "电子线",
+      "nodes": [
+        { "id": "ele_1", "name": "基础电子学", "cost": 1, "bonus": { "type": "electronics", "value": 0.05 } },
+        { "id": "ele_2", "name": "无线通讯", "cost": 1, "bonus": { "type": "electronics", "value": 0.05 } },
+        { "id": "ele_3", "name": "计算机械", "cost": 2, "bonus": { "type": "electronics", "value": 0.08 } },
+        { "id": "ele_4", "name": "雷达系统", "cost": 2, "bonus": { "type": "electronics", "value": 0.10 } },
+        { "id": "ele_5", "name": "密码破译", "cost": 2, "bonus": { "type": "electronics", "value": 0.10 } },
+        { "id": "ele_6", "name": "综合电子战", "cost": 3, "bonus": { "type": "electronics", "value": 0.15 } }
+      ]
+    },
+    {
+      "id": "infantry",
+      "name": "步兵线",
+      "nodes": [
+        { "id": "inf_1", "name": "基础步兵装备", "cost": 1, "bonus": { "type": "infantry", "value": 0.05 } },
+        { "id": "inf_2", "name": "工兵装备", "cost": 1, "bonus": { "type": "infantry", "value": 0.05 } },
+        { "id": "inf_3", "name": "机械化步兵", "cost": 2, "bonus": { "type": "infantry", "value": 0.08 } },
+        { "id": "inf_4", "name": "突击步枪", "cost": 2, "bonus": { "type": "infantry", "value": 0.10 } },
+        { "id": "inf_5", "name": "特种作战", "cost": 2, "bonus": { "type": "infantry", "value": 0.12 } },
+        { "id": "inf_6", "name": "现代步兵学说", "cost": 3, "bonus": { "type": "infantry", "value": 0.15 }, "unlock": "elite_infantry" }
+      ]
+    },
+    {
+      "id": "armor",
+      "name": "装甲线",
+      "nodes": [
+        { "id": "arm_1", "name": "基础装甲", "cost": 1, "bonus": { "type": "armor", "value": 0.05 } },
+        { "id": "arm_2", "name": "中型坦克", "cost": 1, "bonus": { "type": "armor", "value": 0.05 } },
+        { "id": "arm_3", "name": "装甲突击", "cost": 2, "bonus": { "type": "armor", "value": 0.08 } },
+        { "id": "arm_4", "name": "重型坦克", "cost": 2, "bonus": { "type": "armor", "value": 0.10 } },
+        { "id": "arm_5", "name": "装甲协同", "cost": 3, "bonus": { "type": "armor", "value": 0.12 }, "unlock": "heavy_tank" },
+        { "id": "arm_6", "name": "闪电战学说", "cost": 3, "bonus": { "type": "armor", "value": 0.15 }, "unlock": "assault_tank" }
+      ]
+    },
+    {
+      "id": "artillery",
+      "name": "炮兵线",
+      "nodes": [
+        { "id": "art_1", "name": "基础火炮", "cost": 1, "bonus": { "type": "artillery", "value": 0.05 } },
+        { "id": "art_2", "name": "牵引炮", "cost": 1, "bonus": { "type": "artillery", "value": 0.05 } },
+        { "id": "art_3", "name": "自行火炮", "cost": 2, "bonus": { "type": "artillery", "value": 0.08 } },
+        { "id": "art_4", "name": "火箭炮", "cost": 2, "bonus": { "type": "artillery", "value": 0.10 } },
+        { "id": "art_5", "name": "现代炮兵学说", "cost": 3, "bonus": { "type": "artillery", "value": 0.15 }, "unlock": "rocket_artillery" }
+      ]
+    },
+    {
+      "id": "air",
+      "name": "航空线",
+      "nodes": [
+        { "id": "air_1", "name": "基础航空", "cost": 1, "bonus": { "type": "air", "value": 0.05 } },
+        { "id": "air_2", "name": "战斗机", "cost": 1, "bonus": { "type": "air", "value": 0.05 } },
+        { "id": "air_3", "name": "俯冲轰炸机", "cost": 2, "bonus": { "type": "air", "value": 0.08 } },
+        { "id": "air_4", "name": "战略轰炸", "cost": 2, "bonus": { "type": "air", "value": 0.10 } },
+        { "id": "air_5", "name": "雷达引导", "cost": 3, "bonus": { "type": "air", "value": 0.12 }, "unlock": "jet_fighter" },
+        { "id": "air_6", "name": "现代空军学说", "cost": 3, "bonus": { "type": "air", "value": 0.15 }, "unlock": "strategic_bomber" }
+      ]
+    },
+    {
+      "id": "naval",
+      "name": "海军线",
+      "nodes": [
+        { "id": "nav_1", "name": "基础造船", "cost": 1, "bonus": { "type": "naval", "value": 0.05 } },
+        { "id": "nav_2", "name": "驱逐舰", "cost": 1, "bonus": { "type": "naval", "value": 0.05 } },
+        { "id": "nav_3", "name": "巡洋舰", "cost": 2, "bonus": { "type": "naval", "value": 0.08 } },
+        { "id": "nav_4", "name": "潜艇", "cost": 2, "bonus": { "type": "naval", "value": 0.10 } },
+        { "id": "nav_5", "name": "战列舰", "cost": 3, "bonus": { "type": "naval", "value": 0.12 }, "unlock": "battleship" },
+        { "id": "nav_6", "name": "航母编队", "cost": 3, "bonus": { "type": "naval", "value": 0.15 }, "unlock": "carrier" }
+      ]
+    }
+  ]
+}

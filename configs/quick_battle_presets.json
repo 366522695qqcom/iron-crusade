@@ -1,0 +1,112 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "快速对局预设配置（A.1.2）- 降低决策成本，10-15 分钟可完成一局。仅保留资源-工厂-战斗核心系统，禁用科研/完整国策树/外交/阵营/联机。",
+    "referenceDoc": "PROJECT.md 3.11 双模式分层",
+    "designGoal": "预设初始资源 / 预设建筑布局 / 预设发展路线，玩家无需复杂决策即可完成单局",
+    "disabledSubsystems": [
+      "完整国策树（仅保留 3 个核心焦点）",
+      "科研系统（预设固定科研路线）",
+      "完整外交系统（仅保留区域争端入口）",
+      "阵营管理",
+      "联机（仅单机）"
+    ],
+    "winConditionNote": "管控 = S.2 脱敏后的「占领」语义，达成管控目标省份即胜利"
+  },
+  "presets": [
+    {
+      "id": "balanced",
+      "name": "均衡开局",
+      "description": "民厂 + 军厂均衡，适合新手熟悉资源-工厂-战斗核心循环",
+      "targetDurationMin": 12,
+      "initialResources": {
+        "steel": 200,
+        "oil": 100,
+        "tungsten": 50,
+        "rubber": 50,
+        "aluminum": 50,
+        "political": 50
+      },
+      "presetBuildings": [
+        { "type": "civilian_factory", "provinceId": 101, "level": 1 },
+        { "type": "civilian_factory", "provinceId": 101, "level": 1 },
+        { "type": "military_factory", "provinceId": 101, "level": 1 },
+        { "type": "mine", "provinceId": 102, "level": 1 }
+      ],
+      "recommendedDevelopmentPath": "industrial_authoritarian",
+      "coreFocuses": [
+        { "id": "qb_focus_industry", "name": "工业奠基", "reward": "steel +100" },
+        { "id": "qb_focus_army", "name": "武装扩充", "reward": "解锁军厂生产" },
+        { "id": "qb_focus_victory", "name": "决胜攻势", "reward": "争端决心 +0.2" }
+      ],
+      "winCondition": {
+        "type": "control_provinces",
+        "target": 2,
+        "comment": "管控 2 个敌方省份即胜利（S.2 脱敏：原占领）"
+      }
+    },
+    {
+      "id": "industrial",
+      "name": "工业狂潮",
+      "description": "民厂开局偏多，靠产能压制；适合体验工业经营主线",
+      "targetDurationMin": 13,
+      "initialResources": {
+        "steel": 300,
+        "oil": 80,
+        "tungsten": 40,
+        "rubber": 40,
+        "aluminum": 60,
+        "political": 40
+      },
+      "presetBuildings": [
+        { "type": "civilian_factory", "provinceId": 101, "level": 1 },
+        { "type": "civilian_factory", "provinceId": 101, "level": 1 },
+        { "type": "civilian_factory", "provinceId": 101, "level": 1 },
+        { "type": "military_factory", "provinceId": 101, "level": 1 },
+        { "type": "mine", "provinceId": 102, "level": 2 }
+      ],
+      "recommendedDevelopmentPath": "federal_republic",
+      "coreFocuses": [
+        { "id": "qb_focus_industry", "name": "工业奠基", "reward": "steel +100" },
+        { "id": "qb_focus_army", "name": "武装扩充", "reward": "解锁军厂生产" },
+        { "id": "qb_focus_victory", "name": "决胜攻势", "reward": "争端决心 +0.2" }
+      ],
+      "winCondition": {
+        "type": "control_provinces",
+        "target": 2,
+        "comment": "管控 2 个敌方省份即胜利（S.2 脱敏：原占领）"
+      }
+    },
+    {
+      "id": "combat",
+      "name": "速攻争端",
+      "description": "军厂开局偏多，快速成型部队发起区域争端；适合体验战斗核心",
+      "targetDurationMin": 10,
+      "initialResources": {
+        "steel": 150,
+        "oil": 120,
+        "tungsten": 80,
+        "rubber": 60,
+        "aluminum": 40,
+        "political": 60
+      },
+      "presetBuildings": [
+        { "type": "civilian_factory", "provinceId": 101, "level": 1 },
+        { "type": "military_factory", "provinceId": 101, "level": 1 },
+        { "type": "military_factory", "provinceId": 101, "level": 1 },
+        { "type": "mine", "provinceId": 102, "level": 1 }
+      ],
+      "recommendedDevelopmentPath": "industrial_authoritarian",
+      "coreFocuses": [
+        { "id": "qb_focus_industry", "name": "工业奠基", "reward": "steel +100" },
+        { "id": "qb_focus_army", "name": "武装扩充", "reward": "解锁军厂生产" },
+        { "id": "qb_focus_victory", "name": "决胜攻势", "reward": "争端决心 +0.2" }
+      ],
+      "winCondition": {
+        "type": "control_provinces",
+        "target": 2,
+        "comment": "管控 2 个敌方省份即胜利（S.2 脱敏：原占领）"
+      }
+    }
+  ]
+}

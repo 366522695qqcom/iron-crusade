@@ -1,0 +1,85 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "countryId": "iron_cross",
+    "comment": "焦点树示例 - spec S.1.3 schema：分支条件用 requiresDevelopmentPath，不再使用 requiresIdeology",
+    "schemaNote": "三条发展路线（工业集权 / 公社共治 / 联邦共和）各对应一条独立焦点分支",
+    "costUnit": "政治点",
+    "referenceDoc": "spec S.1.3 + PROJECT.md 第 4 章"
+  },
+  "focuses": [
+    {
+      "id": "industrial_base",
+      "name": "工业基础",
+      "cost": 25,
+      "prerequisites": [],
+      "requiresDevelopmentPath": null,
+      "effects": [
+        { "type": "buff", "target": "civilian_factory_speed", "value": 0.1 }
+      ]
+    },
+    {
+      "id": "iron_authoritarian_branch",
+      "name": "工业集权主线",
+      "cost": 50,
+      "prerequisites": ["industrial_base"],
+      "requiresDevelopmentPath": "industrial_authoritarian",
+      "effects": [
+        { "type": "buff", "target": "military_factory_speed", "value": 0.2 },
+        { "type": "political_power_per_day", "value": 0.5 }
+      ]
+    },
+    {
+      "id": "armor_doctrine",
+      "name": "装甲突击学说",
+      "cost": 75,
+      "prerequisites": ["iron_authoritarian_branch"],
+      "requiresDevelopmentPath": "industrial_authoritarian",
+      "effects": [
+        { "type": "research_bonus", "target": "armor", "value": 0.15 }
+      ]
+    },
+    {
+      "id": "communal_branch",
+      "name": "公社共治主线",
+      "cost": 50,
+      "prerequisites": ["industrial_base"],
+      "requiresDevelopmentPath": "communal",
+      "effects": [
+        { "type": "buff", "target": "production_efficiency_cap", "value": 0.1 },
+        { "type": "stability", "value": 0.05 }
+      ]
+    },
+    {
+      "id": "mass_industry",
+      "name": "大工业纵深",
+      "cost": 75,
+      "prerequisites": ["communal_branch"],
+      "requiresDevelopmentPath": "communal",
+      "effects": [
+        { "type": "buff", "target": "factory_output", "value": 0.15 }
+      ]
+    },
+    {
+      "id": "federal_republic_branch",
+      "name": "联邦共和主线",
+      "cost": 50,
+      "prerequisites": ["industrial_base"],
+      "requiresDevelopmentPath": "federal_republic",
+      "effects": [
+        { "type": "buff", "target": "trade_efficiency", "value": 0.2 },
+        { "type": "political_power_per_day", "value": 0.3 }
+      ]
+    },
+    {
+      "id": "global_supply",
+      "name": "全球补给网络",
+      "cost": 75,
+      "prerequisites": ["federal_republic_branch"],
+      "requiresDevelopmentPath": "federal_republic",
+      "effects": [
+        { "type": "buff", "target": "supply_range", "value": 0.25 }
+      ]
+    }
+  ]
+}

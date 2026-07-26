@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "version": "0.1.0",
+    "comment": "Day2 新手引导配置 - 生产与部署（spec A.3.1）",
+    "referenceDoc": "PROJECT.md 3.13 阶梯式新手引导 / spec Requirement: 阶梯式新手引导",
+    "designGoal": "Day1 全部任务完成后解锁，教学装备生产与部队部署，衔接工业经营到武装成型。"
+  },
+  "day": 2,
+  "title": "生产与部署",
+  "description": "学习装备生产与部队部署，建立自己的武装力量",
+  "triggerCondition": "day1_completed",
+  "tasks": [
+    {
+      "id": "day2_produce_equipment",
+      "type": "produce_equipment",
+      "target": 50,
+      "params": { "equipmentType": "infantry_kit" },
+      "reward": {
+        "politicalPower": 25,
+        "resources": []
+      },
+      "guideText": "选择军厂 → 分配生产线 → 等待装备产出流入装备池"
+    },
+    {
+      "id": "day2_deploy_division",
+      "type": "deploy_division",
+      "target": 1,
+      "params": {},
+      "reward": {
+        "politicalPower": 25,
+        "resources": [{ "type": "steel", "amount": 50 }]
+      },
+      "guideText": "装备池充足时 → 选目标省份 → 部署 1 个部队"
+    }
+  ],
+  "unlocks": ["equipment_production", "division_deploy"]
+}
