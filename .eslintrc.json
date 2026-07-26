@@ -1,0 +1,46 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint", "import"],
+  "settings": {
+    "_guideline_core_bare_number": "core/ 内禁止裸 number 参与逻辑判定，统一使用 Fixed（建议规则，warning，附录 C.1.5）。ESLint 无法静态精确检测，依赖 code review 与 PR 检查强制。"
+  },
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["src/core/**/*.ts"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "Math",
+            "message": "Math.random 禁用于 core/，请使用 PRNG。core/ 内 Math 白名单：floor / trunc / imul / round（仅 fixed.ts 内部用，附录 C.1.5）。"
+          }
+        ],
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "ImportDeclaration[source.value='cc']",
+            "message": "core/ 层禁止依赖 Cocos（cc），core 必须为纯 TS 无引擎依赖（技术设计文档 1.4）。"
+          },
+          {
+            "selector": "CallExpression[callee.object.name='Math'][callee.property.name='random']",
+            "message": "core/ 层禁止使用 Math.random，请使用 PRNG（确定性约束，附录 C.1.5）。"
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/core/determinism/fixed.ts"],
+      "rules": {
+        "no-restricted-globals": "off"
+      }
+    }
+  ]
+}
