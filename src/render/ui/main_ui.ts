@@ -23,6 +23,7 @@ import { createNode, addFullWidget } from '../core/node_factory';
 import { DESIGN_WIDTH, DESIGN_HEIGHT } from '../core/ui_theme';
 import { TopBar } from './top_bar';
 import { BottomBar } from './bottom_bar';
+import { UnitCommandBar } from './unit_command_bar';
 import { MapView } from '../map/map_view';
 import { MapInteraction } from '../map/map_interaction';
 import { ResourcePanel } from './panels/resource_panel';
@@ -32,6 +33,7 @@ import { FocusPanel } from './panels/focus_panel';
 import { ResearchPanel } from './panels/research_panel';
 import { DiplomacyPanel } from './panels/diplomacy_panel';
 import { CombatPanel, CombatPanelShadow } from './panels/combat_panel';
+import { WarOverviewPanel } from './panels/war_overview_panel';
 import { AssistantPanel, AssistantPanelShadow } from './panels/assistant_panel';
 import { DailyTaskPanel, DailyTaskCardView } from './panels/daily_task_panel';
 import { SavePanel } from './panels/save_panel';
@@ -40,7 +42,15 @@ import { SessionGoalCard } from './panels/session_goal_card';
 import { FocusCard } from './cards/focus_card';
 import { PauseOverlay } from './overlays/pause_overlay';
 import { OnboardingOverlay } from './overlays/onboarding_overlay';
-import type { MainUiShadow } from '../core/shadow_reader';
+import { GameOverOverlay } from './overlays/game_over_overlay';
+import type {
+  MainUiShadow,
+  WarOverviewShadow,
+  UnitCommandShadow,
+  MapDivisionView,
+  CombatBubbleView,
+} from '../core/shadow_reader';
+import type { UnitCommandAction } from './unit_command_bar';
 
 /** 主界面模式 */
 export type MainUiMode = 'menu' | 'quick' | 'classic';
@@ -60,6 +70,7 @@ export class MainUi {
   // 子组件
   private _topBar: TopBar | null = null;
   private _bottomBar: BottomBar | null = null;
+  private _unitCommandBar: UnitCommandBar | null = null;
   private _mapView: MapView | null = null;
   private _mapInteraction: MapInteraction | null = null;
   private _resourcePanel: ResourcePanel | null = null;
@@ -69,6 +80,7 @@ export class MainUi {
   private _researchPanel: ResearchPanel | null = null;
   private _diplomacyPanel: DiplomacyPanel | null = null;
   private _combatPanel: CombatPanel | null = null;
+  private _warOverviewPanel: WarOverviewPanel | null = null;
   private _assistantPanel: AssistantPanel | null = null;
   private _dailyTaskPanel: DailyTaskPanel | null = null;
   private _savePanel: SavePanel | null = null;
@@ -77,6 +89,7 @@ export class MainUi {
   private _focusCard: FocusCard | null = null;
   private _pauseOverlay: PauseOverlay | null = null;
   private _onboardingOverlay: OnboardingOverlay | null = null;
+  private _gameOverOverlay: GameOverOverlay | null = null;
 
   /** 挂载主界面（首次创建所有子节点） */
   mount(parent: Node): Node {
@@ -91,9 +104,9 @@ export class MainUi {
 
     // 中央地图（局内显示）
     this._mapView = new MapView();
-    const mapNode = this._mapView.mount(node);
+    this._mapView.mount(node);
     this._mapInteraction = new MapInteraction();
-    this._mapInteraction.mount(mapNode);
+    this._mapInteraction.mount(this._mapView);
 
     // 左侧工厂面板
     this._factoryPanel = new FactoryPanel();
@@ -122,6 +135,15 @@ export class MainUi {
     this._combatPanel = new CombatPanel();
     this._combatPanel.mount(node);
     this._combatPanel.hide();
+
+    // 战争总面板（默认隐藏，参战后通过徽章/外交面板入口打开）
+    this._warOverviewPanel = new WarOverviewPanel();
+    this._warOverviewPanel.mount(node);
+    this._warOverviewPanel.hide();
+
+    // 师团命令条（贴底栏上方，默认隐藏，选中师团时显示）
+    this._unitCommandBar = new UnitCommandBar();
+    this._unitCommandBar.mount(node);
 
     // 左侧助理面板（局内显示，spec A.2.4）
     this._assistantPanel = new AssistantPanel();
@@ -156,6 +178,9 @@ export class MainUi {
 
     this._onboardingOverlay = new OnboardingOverlay();
     this._onboardingOverlay.mount(node);
+
+    this._gameOverOverlay = new GameOverOverlay();
+    this._gameOverOverlay.mount(node);
 
     // 局外面板（存档 / 商店，仅 menu 模式挂载显示）
     this._savePanel = new SavePanel();
@@ -195,6 +220,37 @@ export class MainUi {
     this._combatPanel?.update(shadow);
   }
 
+  /** 刷新战争总面板 */
+  updateWarOverview(shadow: WarOverviewShadow): void {
+    this._warOverviewPanel?.update(shadow);
+    this._diplomacyPanel?.setAtWar(shadow.atWar);
+  }
+
+  /** 刷新师团命令条 */
+  updateUnitCommand(shadow: UnitCommandShadow): void {
+    this._unitCommandBar?.update(shadow);
+  }
+
+  /** 刷新地图师团标记 */
+  updateMapDivisions(views: MapDivisionView[], playerCountryId: string): void {
+    this._mapView?.updateDivisions(views, playerCountryId);
+  }
+
+  /** 刷新战斗泡泡 */
+  updateCombatBubbles(bubbles: CombatBubbleView[]): void {
+    this._mapView?.updateCombatBubbles(bubbles);
+  }
+
+  /** 切换战争总面板显隐 */
+  toggleWarOverview(): void {
+    this._warOverviewPanel?.toggle();
+  }
+
+  /** 注册师团命令动作回调 */
+  onUnitCommand(cb: (action: UnitCommandAction) => void): void {
+    this._unitCommandBar?.onAction(cb);
+  }
+
   /** 接线底部入口栏：点击入口 → 切换对应面板显隐 */
   private _wireBottomBar(): void {
     this._bottomBar?.onEntryClick((entryId) => {
@@ -204,12 +260,10 @@ export class MainUi {
           this._buildMode = this._buildingPanel?.isShown ?? false;
           if (this._buildMode && this._playerCountryId) {
             this._mapView?.startBuildMode(this._playerCountryId);
+            this._mapInteraction?.setMode('placeBuilding');
           } else {
-            if (this._playerCountryId) {
-              this._mapView?.stopBuildMode(this._playerCountryId);
-            } else {
-              this._mapView?.clearHighlight();
-            }
+            this._mapView?.stopBuildMode(this._playerCountryId ?? '');
+            this._mapInteraction?.setMode('select');
           }
           break;
         case 'factory':
@@ -299,6 +353,12 @@ export class MainUi {
   get combatPanel(): CombatPanel | null {
     return this._combatPanel;
   }
+  get warOverviewPanel(): WarOverviewPanel | null {
+    return this._warOverviewPanel;
+  }
+  get unitCommandBar(): UnitCommandBar | null {
+    return this._unitCommandBar;
+  }
   get assistantPanel(): AssistantPanel | null {
     return this._assistantPanel;
   }
@@ -322,6 +382,9 @@ export class MainUi {
   }
   get onboardingOverlay(): OnboardingOverlay | null {
     return this._onboardingOverlay;
+  }
+  get gameOverOverlay(): GameOverOverlay | null {
+    return this._gameOverOverlay;
   }
   get node(): Node | null {
     return this._node;

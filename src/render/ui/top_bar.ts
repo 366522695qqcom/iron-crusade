@@ -19,6 +19,7 @@ import { drawPanel, drawResourceIcon, drawProgressBar } from '../core/graphics_u
 import {
   INDUSTRY_PALETTE,
   NEUTRAL_PALETTE,
+  COMBAT_PALETTE,
   RESOURCE_COLORS,
   FONT_SIZE,
   RADIUS,
@@ -59,6 +60,12 @@ export class TopBar {
   private _lastPathText = '';
   private _pauseBtn: { node: Node; label: Label } | null = null;
   private _pauseCb: (() => void) | null = null;
+  private _warBadgeNode: Node | null = null;
+  private _warBadgeGfx: Graphics | null = null;
+  private _warBadgeLabel: Label | null = null;
+  private _warBadgeCb: (() => void) | null = null;
+  private _lastWarAtWar = false;
+  private _lastWarEnemyProgress = -1;
 
   mount(parent: Node): Node {
     if (this._node) return this._node;
@@ -131,6 +138,26 @@ export class TopBar {
       });
     }
 
+    // 右上角战争徽章（M1：参战时显示在暂停按钮左侧）
+    const badgeW = 88;
+    const badgeH = 40;
+    const badgeNode = createNode('WarBadge', node, badgeW, badgeH);
+    badgeNode.setPosition(w / 2 - 32 - 12 - badgeW / 2, 0, 0);
+    const badgeGfx = badgeNode.addComponent(Graphics);
+    const badgeLbl = badgeNode.addComponent(Label);
+    badgeLbl.string = '战争';
+    badgeLbl.fontSize = FONT_SIZE.BODY;
+    badgeLbl.lineHeight = Math.round(FONT_SIZE.BODY * 1.4);
+    badgeLbl.color = NEUTRAL_PALETTE.textPrimary;
+    badgeLbl.horizontalAlign = 1;
+    badgeLbl.verticalAlign = 1;
+    drawPanel(badgeGfx, -badgeW / 2, -badgeH / 2, badgeW, badgeH, COMBAT_PALETTE.primary, NEUTRAL_PALETTE.warning, RADIUS.BUTTON);
+    badgeNode.on('click', () => this._warBadgeCb?.());
+    this._warBadgeNode = badgeNode;
+    this._warBadgeGfx = badgeGfx;
+    this._warBadgeLabel = badgeLbl;
+    badgeNode.active = false;
+
     // 右上角暂停按钮
     const pauseBtn = makeButton(node, '⏸', 48, 48, NEUTRAL_PALETTE.cardBg, NEUTRAL_PALETTE.border, FONT_SIZE.TITLE, 'PauseBtn');
     pauseBtn.node.setPosition(w / 2 - 32, 0, 0);
@@ -148,6 +175,32 @@ export class TopBar {
   /** 注册暂停按钮回调 */
   onPause(cb: () => void): void {
     this._pauseCb = cb;
+  }
+
+  /** 注册战争徽章点击回调 */
+  onWarBadgeClick(cb: () => void): void {
+    this._warBadgeCb = cb;
+  }
+
+  /** 更新战争徽章状态 */
+  updateWarBadge(atWar: boolean, enemySurrenderProgress: number): void {
+    if (!this._warBadgeNode) return;
+    if (atWar !== this._lastWarAtWar) {
+      this._lastWarAtWar = atWar;
+      this._warBadgeNode.active = atWar;
+    }
+    if (atWar && Math.abs(this._lastWarEnemyProgress - enemySurrenderProgress) > 0.01) {
+      this._lastWarEnemyProgress = enemySurrenderProgress;
+      const pct = Math.round(enemySurrenderProgress * 100);
+      if (this._warBadgeLabel) {
+        this._warBadgeLabel.string = `战争 ${pct}%`;
+      }
+      const border = enemySurrenderProgress > 0.6 ? NEUTRAL_PALETTE.warning : NEUTRAL_PALETTE.textSecondary;
+      if (this._warBadgeGfx) {
+        const bw = 88, bh = 40;
+        drawPanel(this._warBadgeGfx, -bw / 2, -bh / 2, bw, bh, COMBAT_PALETTE.primary, border, RADIUS.BUTTON);
+      }
+    }
   }
 
   /** 刷新国家头部 */

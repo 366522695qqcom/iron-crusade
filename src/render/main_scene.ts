@@ -19,23 +19,18 @@ import { DESIGN_WIDTH, DESIGN_HEIGHT } from './core/ui_theme';
 import { MainUi } from './ui/main_ui';
 import { IdleAlert } from './alerts/idle_alert';
 import { TimeControl } from './time-control/time_control';
+import { LoginOverlay } from './ui/overlays/login_overlay';
 import type { MainUiShadow, FactoryPanelShadow } from './core/shadow_reader';
 
-/**
- * 主场景装配根
- *
- * 由 main.ts 创建并挂载到 Cocos director。
- * game/ 层通过 mainScene.update(shadow) 推送每帧渲染数据。
- */
 export class MainScene {
   private _scene: Scene | null = null;
   private _root: Node | null = null;
   private _mainUi: MainUi | null = null;
   private _idleAlert: IdleAlert | null = null;
   private _timeControl: TimeControl | null = null;
+  private _loginOverlay: LoginOverlay | null = null;
   private _mounted = false;
 
-  /** 创建并挂载场景（返回 Cocos Scene 供 director.runScene 使用） */
   createScene(): Scene {
     if (this._scene) return this._scene;
     const scene = new Scene('MainScene');
@@ -44,17 +39,17 @@ export class MainScene {
     const root = createNode('Root', scene, DESIGN_WIDTH, DESIGN_HEIGHT);
     this._root = root;
 
-    // 主界面
     this._mainUi = new MainUi();
     this._mainUi.mount(root);
 
-    // 空闲提醒浮窗（局内显示，由 factory shadow.alertLevel 触发）
     this._idleAlert = new IdleAlert();
     this._idleAlert.mount(root);
 
-    // 时间控制条（局内显示）
     this._timeControl = new TimeControl();
     this._timeControl.mount(root);
+
+    this._loginOverlay = new LoginOverlay();
+    this._loginOverlay.mount(root);
 
     this._mounted = true;
     return scene;
@@ -82,6 +77,10 @@ export class MainScene {
 
   get timeControl(): TimeControl | null {
     return this._timeControl;
+  }
+
+  get loginOverlay(): LoginOverlay | null {
+    return this._loginOverlay;
   }
 
   get scene(): Scene | null {
