@@ -42,9 +42,10 @@ function makeBaseState(
   const provinces = new SortedMap<number, any>();
   provinces.set(1, {
     id: 1, ownerId: 'p1', controllerId: 'p1', name: 'A',
-    terrain: 'plains', isCoastal: false,
+    terrain: 'plains', isCoastal: false, adjacentProvinceIds: [],
     infrastructure: 3, buildingSlots: 4, combatWidth: 10,
-    supplyHubLevel: 1, fortLevel: 0, VP: 10,
+    supplyHubLevel: 1, fortLevel: 0, portLevel: 0,
+    adjacentSeaZoneIds: [], VP: 10,
   });
 
   const stockpiles = new SortedMap<string, any>();
@@ -93,11 +94,24 @@ function makeBaseState(
     productionTasks: new SortedMap(),
     equipmentPools,
     divisions: new SortedMap(),
+    divisionTemplates: new SortedMap(),
+    supplyNetwork: { provinceSupply: new SortedMap(), seaSupplyRoutes: [], lastRecalcTick: 0 },
     focusTrees: new SortedMap(),
     research: new SortedMap(),
     disputes: new SortedMap(),
+    fronts: new SortedMap(),
+    warLosses: new SortedMap(),
+    warLog: [],
+    selectedUnitIds: [],
     nextEntityId: 100,
     seedMap: { 'p1': 100 },
+    gameOver: null,
+    shipTemplates: new SortedMap(),
+    ships: new SortedMap(),
+    fleets: new SortedMap(),
+    seaZones: new SortedMap(),
+    seaControl: new SortedMap(),
+    convoyRoutes: [],
   } as WorldState;
 }
 
