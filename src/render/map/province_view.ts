@@ -43,7 +43,10 @@ export type ProvinceHighlightState =
   | 'owned'
   | 'controlled'
   | 'selectable'
-  | 'unselectable';
+  | 'unselectable'
+  | 'moveTarget'
+  | 'attackTarget'
+  | 'buildable';
 
 interface HighlightStyle {
   fill: Color;
@@ -140,6 +143,12 @@ export class ProvinceView {
     if (this._node) this._node.setPosition(x, y, 0);
   }
 
+  /** 取省份在父节点（MapRoot）局部坐标 */
+  getPosition(): { x: number; y: number } {
+    if (!this._node) return { x: 0, y: 0 };
+    return { x: this._node.position.x, y: this._node.position.y };
+  }
+
   /**
    * 注册点击回调（事件实际由 map_interaction 统一路由）。
    * 骨架阶段 hit-test 未实现，本钩子暂不自动触发；
@@ -192,6 +201,24 @@ export class ProvinceView {
           fill: NEUTRAL_PALETTE.textDisabled,
           stroke: NEUTRAL_PALETTE.border,
           lineWidth: 1,
+        };
+      case 'moveTarget':
+        return {
+          fill: INDUSTRY_PALETTE.resourceOk,
+          stroke: INDUSTRY_PALETTE.primary,
+          lineWidth: 3,
+        };
+      case 'attackTarget':
+        return {
+          fill: COMBAT_PALETTE.controlled,
+          stroke: NEUTRAL_PALETTE.warning,
+          lineWidth: 3,
+        };
+      case 'buildable':
+        return {
+          fill: INDUSTRY_PALETTE.primary,
+          stroke: INDUSTRY_PALETTE.resourceOk,
+          lineWidth: 3,
         };
       case 'normal':
       default:

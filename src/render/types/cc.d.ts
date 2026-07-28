@@ -137,6 +137,8 @@ declare module 'cc' {
     hoveredSprite: Sprite | null;
     normalSprite: Sprite | null;
     clickEvents: EventHandler[];
+    /** 是否可交互（false=灰化不响应点击） */
+    interactable: boolean;
   }
 
   /** 事件处理器 */
