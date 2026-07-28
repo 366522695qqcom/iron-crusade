@@ -33,9 +33,10 @@ function makeBaseState(political = 200, infantryCount = 500): WorldState {
   const provinces = new SortedMap<number, any>();
   provinces.set(1, {
     id: 1, ownerId: 'p1', controllerId: 'p1', name: 'A',
-    terrain: 'plains', isCoastal: false,
+    terrain: 'plains', isCoastal: false, adjacentProvinceIds: [],
     infrastructure: 3, buildingSlots: 4, combatWidth: 10,
-    supplyHubLevel: 1, fortLevel: 0, VP: 10,
+    supplyHubLevel: 1, fortLevel: 0, portLevel: 0,
+    adjacentSeaZoneIds: [], VP: 10,
   });
 
   const stockpiles = new SortedMap<string, any>();
@@ -84,12 +85,24 @@ function makeBaseState(political = 200, infantryCount = 500): WorldState {
     productionTasks: new SortedMap(),
     equipmentPools,
     divisions: new SortedMap(),
+    divisionTemplates: new SortedMap(),
+    supplyNetwork: { provinceSupply: new SortedMap(), seaSupplyRoutes: [], lastRecalcTick: 0 },
     focusTrees: new SortedMap(),
     research: new SortedMap(),
     disputes: new SortedMap(),
     fronts: new SortedMap(),
+    warLosses: new SortedMap(),
+    warLog: [],
+    selectedUnitIds: [],
     nextEntityId: 100,
     seedMap: { 'p1': 100 },
+    gameOver: null,
+    shipTemplates: new SortedMap(),
+    ships: new SortedMap(),
+    fleets: new SortedMap(),
+    seaZones: new SortedMap(),
+    seaControl: new SortedMap(),
+    convoyRoutes: [],
   } as WorldState;
 }
 
@@ -123,10 +136,10 @@ describe('DivisionSystem', () => {
     const state = makeBaseState(50, 500);
     const ds = new DefaultDivisionSystem();
 
-    const divCountBefore = state.divisions.size;
+    const divCountBefore = state.divisions.size();
     const ok = ds.recruit(state, 'p1', 1);
     expect(ok).toBe(false);
-    expect(state.divisions.size).toBe(divCountBefore);
+    expect(state.divisions.size()).toBe(divCountBefore);
     expect(state.nextEntityId).toBe(100);
   });
 
@@ -134,10 +147,10 @@ describe('DivisionSystem', () => {
     const state = makeBaseState(200, 50);
     const ds = new DefaultDivisionSystem();
 
-    const divCountBefore = state.divisions.size;
+    const divCountBefore = state.divisions.size();
     const ok = ds.recruit(state, 'p1', 1);
     expect(ok).toBe(false);
-    expect(state.divisions.size).toBe(divCountBefore);
+    expect(state.divisions.size()).toBe(divCountBefore);
     expect(state.nextEntityId).toBe(100);
   });
 

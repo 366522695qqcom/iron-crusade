@@ -34,10 +34,10 @@ function makeBaseState(): WorldState {
   });
 
   const provinces = new SortedMap<number, any>();
-  provinces.set(1, { id: 1, ownerId: 'p1', controllerId: 'p1', name: '首都', terrain: 'plains', isCoastal: false, infrastructure: 3, buildingSlots: 4, combatWidth: 10, supplyHubLevel: 1, fortLevel: 0, VP: 10 });
-  provinces.set(2, { id: 2, ownerId: 'p1', controllerId: 'p1', name: '边境', terrain: 'plains', isCoastal: false, infrastructure: 2, buildingSlots: 3, combatWidth: 8, supplyHubLevel: 0, fortLevel: 0, VP: 0 });
-  provinces.set(3, { id: 3, ownerId: 'e1', controllerId: 'e1', name: '敌首都', terrain: 'plains', isCoastal: false, infrastructure: 3, buildingSlots: 4, combatWidth: 10, supplyHubLevel: 1, fortLevel: 0, VP: 10 });
-  provinces.set(4, { id: 4, ownerId: 'e1', controllerId: 'e1', name: '敌边境', terrain: 'plains', isCoastal: false, infrastructure: 2, buildingSlots: 3, combatWidth: 8, supplyHubLevel: 0, fortLevel: 1, VP: 0 });
+  provinces.set(1, { id: 1, ownerId: 'p1', controllerId: 'p1', name: '首都', terrain: 'plains', isCoastal: false, adjacentProvinceIds: [], infrastructure: 3, buildingSlots: 4, combatWidth: 10, supplyHubLevel: 1, fortLevel: 0, portLevel: 0, airBaseLevel: 1, adjacentSeaZoneIds: [], VP: 10 });
+  provinces.set(2, { id: 2, ownerId: 'p1', controllerId: 'p1', name: '边境', terrain: 'plains', isCoastal: false, adjacentProvinceIds: [], infrastructure: 2, buildingSlots: 3, combatWidth: 8, supplyHubLevel: 0, fortLevel: 0, portLevel: 0, airBaseLevel: 0, adjacentSeaZoneIds: [], VP: 0 });
+  provinces.set(3, { id: 3, ownerId: 'e1', controllerId: 'e1', name: '敌首都', terrain: 'plains', isCoastal: false, adjacentProvinceIds: [], infrastructure: 3, buildingSlots: 4, combatWidth: 10, supplyHubLevel: 1, fortLevel: 0, portLevel: 0, airBaseLevel: 1, adjacentSeaZoneIds: [], VP: 10 });
+  provinces.set(4, { id: 4, ownerId: 'e1', controllerId: 'e1', name: '敌边境', terrain: 'plains', isCoastal: false, adjacentProvinceIds: [], infrastructure: 2, buildingSlots: 3, combatWidth: 8, supplyHubLevel: 0, fortLevel: 1, portLevel: 0, airBaseLevel: 0, adjacentSeaZoneIds: [], VP: 0 });
 
   const stockpiles = new SortedMap<string, any>();
   function makeStockpile(pol: number) {
@@ -76,14 +76,28 @@ function makeBaseState(): WorldState {
     countries, provinces, resourceNodes: new SortedMap(), stockpiles,
     buildings: new SortedMap(), factories: new SortedMap(), constructionQueues: new SortedMap(),
     productionTasks: new SortedMap(), equipmentPools, divisions: new SortedMap(),
+    divisionTemplates: new SortedMap(),
+    supplyNetwork: { provinceSupply: new SortedMap(), seaSupplyRoutes: [], lastRecalcTick: 0 },
     focusTrees: new SortedMap(), research: new SortedMap(), disputes: new SortedMap(),
-    fronts: new SortedMap(), nextEntityId: 100, seedMap: { 'p1': 100, 'e1': 200 },
+    fronts: new SortedMap(), warLosses: new SortedMap(), warLog: [], selectedUnitIds: [],
+    nextEntityId: 100, seedMap: { 'p1': 100, 'e1': 200 }, gameOver: null,
+    shipTemplates: new SortedMap(),
+    ships: new SortedMap(),
+    fleets: new SortedMap(),
+    seaZones: new SortedMap(),
+    seaControl: new SortedMap(),
+    convoyRoutes: [],
+    airZones: new SortedMap(),
+    wings: new SortedMap(),
+    airSuperiority: new SortedMap(),
+    invasions: new SortedMap(),
   } as WorldState;
 }
 
 function makeReadyDivision(id: number, ownerId: string, provinceId: number, strength = 1.0): Division {
   return {
     id, ownerId,
+    templateId: 'infantry',
     template: [
       { slot: 0, equipmentType: 'infantry_equipment' },
       { slot: 1, equipmentType: 'infantry_equipment' },
