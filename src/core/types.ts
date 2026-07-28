@@ -11,6 +11,7 @@ export type BuildingType =
   | 'civilian_factory' // 民用工厂
   | 'military_factory' // 军用工厂
   | 'dockyard'         // 船坞
+  | 'air_base'         // 空军基地（M4）
   | 'infrastructure'   // 基础设施
   | 'mine'             // 矿场
   | 'storage'          // 仓储
