@@ -44,16 +44,12 @@ describe('Fixed 基本运算', () => {
   it('mul 大数 ±32767 × ±32767（附录 C.1.4 边界，必须拆位实现）', () => {
     const max = Fixed.fromInt(32767);
     const min = Fixed.fromInt(-32768);
-    // 32767 × 32767 = 1,073,676,289，但 Q16.16 上限约 32767.99998
-    // 故会 overflow wrap，关键在于"同操作必同结果"，断言确定性而非具体值
     const r1 = max.mul(max);
     const r2 = max.mul(max);
     expect(r1.raw).toBe(r2.raw);
-
     const r3 = max.mul(min);
     const r4 = max.mul(min);
     expect(r3.raw).toBe(r4.raw);
-
     const r5 = min.mul(min);
     const r6 = min.mul(min);
     expect(r5.raw).toBe(r6.raw);
@@ -79,15 +75,12 @@ describe('Fixed 基本运算', () => {
 
 describe('Fixed 确定性（跨运行同结果）', () => {
   it('相同 raw + 相同操作序列，结果位级一致', () => {
-    // 模拟联机两客户端独立计算
     const a1 = Fixed.fromInt(123);
     const b1 = Fixed.fromInt(456);
     const r1 = a1.mul(b1).add(Fixed.fromInt(789)).div(Fixed.fromInt(3));
-
     const a2 = Fixed.fromInt(123);
     const b2 = Fixed.fromInt(456);
     const r2 = a2.mul(b2).add(Fixed.fromInt(789)).div(Fixed.fromInt(3));
-
     expect(r1.raw).toBe(r2.raw);
   });
 

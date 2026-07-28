@@ -30,10 +30,8 @@ describe('PRNG 确定性', () => {
   });
 
   it('零种子兜底为黄金分割常数（避免恒 0 输出）', () => {
-    // 若未兜底，xorshift32(0) 永远输出 0
     const p0 = new PRNG(0);
     expect(p0.nextUint32()).not.toBe(0);
-    // 兜底后初始 state = 0x9e3779b9，第一次输出与 seed=0x9e3779b9 一致
     const pGold = new PRNG(0x9e3779b9);
     const pZero = new PRNG(0);
     expect(pZero.nextUint32()).toBe(pGold.nextUint32());
@@ -73,12 +71,9 @@ describe('PRNG 确定性', () => {
   });
 
   it('联机场景：两个客户端同 seed 同步推进，状态完全一致', () => {
-    // 模拟联机：Host 生成 seed，下发到客户端
     const hostSeed = 0xdeadbeef;
     const hostPrng = new PRNG(hostSeed);
     const clientPrng = new PRNG(hostSeed);
-
-    // 每帧调用一次 nextUint32，1000 帧后状态必相等
     for (let i = 0; i < 1000; i++) {
       expect(hostPrng.nextUint32()).toBe(clientPrng.nextUint32());
     }

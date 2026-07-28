@@ -12,15 +12,12 @@ import { SortedMap } from './sorted_map';
 describe('SortedMap string key', () => {
   it('按 key 升序遍历（不依赖插入顺序）', () => {
     const m = new SortedMap<string, number>();
-    // 故意乱序插入
     m.set('zebra', 1);
     m.set('apple', 2);
     m.set('mango', 3);
     m.set('banana', 4);
-
     const keys: string[] = [];
     m.forEach((v, k) => keys.push(k));
-
     expect(keys).toEqual(['apple', 'banana', 'mango', 'zebra']);
   });
 
@@ -30,12 +27,9 @@ describe('SortedMap string key', () => {
     m.set('a', 1);
     m.set('b', 2);
     m.set('d', 4);
-
     m.delete('b');
-
     const keys: string[] = [];
     m.forEach((v, k) => keys.push(k));
-
     expect(keys).toEqual(['a', 'c', 'd']);
   });
 
@@ -44,7 +38,6 @@ describe('SortedMap string key', () => {
     m.set('x', 1);
     m.set('x', 2);
     m.set('x', 3);
-
     expect(m.size()).toBe(1);
     expect(m.get('x')).toBe(3);
   });
@@ -57,10 +50,8 @@ describe('SortedMap number key', () => {
     m.set(2, 'b');
     m.set(50, 'c');
     m.set(1, 'd');
-
     const keys: number[] = [];
     m.forEach((v, k) => keys.push(k));
-
     expect(keys).toEqual([1, 2, 50, 100]);
   });
 
@@ -70,10 +61,8 @@ describe('SortedMap number key', () => {
     m.set(5, 'b');
     m.set(-10, 'c');
     m.set(0, 'd');
-
     const keys: number[] = [];
     m.forEach((v, k) => keys.push(k));
-
     expect(keys).toEqual([-10, -1, 0, 5]);
   });
 });
@@ -89,15 +78,12 @@ describe('SortedMap 确定性', () => {
       m.set('qux', 4);
       return m;
     }
-
     const m1 = buildMap();
     const m2 = buildMap();
-
     const k1: string[] = [];
     const k2: string[] = [];
     m1.forEach((v, k) => k1.push(k));
     m2.forEach((v, k) => k2.push(k));
-
     expect(k1).toEqual(k2);
     expect(k1).toEqual(['baz', 'foo', 'qux']);
   });
@@ -107,13 +93,8 @@ describe('SortedMap 确定性', () => {
     m.set(3, 'c');
     m.set(1, 'a');
     m.set(2, 'b');
-
     const entries = m.entries();
-    expect(entries).toEqual([
-      [1, 'a'],
-      [2, 'b'],
-      [3, 'c'],
-    ]);
+    expect(entries).toEqual([[1, 'a'], [2, 'b'], [3, 'c']]);
   });
 });
 
