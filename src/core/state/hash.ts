@@ -39,11 +39,29 @@ import {
   ProductionTask,
   EquipmentPool,
   Division,
+  DivisionTemplate,
   FocusTreeState,
   ResearchState,
   Dispute,
   Front,
   DivisionStatus,
+  CountryWarLosses,
+  WarLogEntry,
+  WarLogKind,
+  SupplyStatus,
+  SupplyNetwork,
+  ProvinceSupply,
+  SeaSupplyRoute,
+  ShipTemplate,
+  Ship,
+  Fleet,
+  SeaZone,
+  SeaControlState,
+  ConvoyRoute,
+  AirZone,
+  AirWing,
+  AirSuperiorityState,
+  InvasionPlan,
 } from './world_state';
 
 /**
@@ -71,11 +89,12 @@ const BUILDING_TYPE_INDEX: Record<BuildingType, number> = {
   civilian_factory: 0,
   military_factory: 1,
   dockyard: 2,
-  infrastructure: 3,
-  mine: 4,
-  storage: 5,
-  supply_hub: 6,
-  fort: 7,
+  air_base: 3,
+  infrastructure: 4,
+  mine: 5,
+  storage: 6,
+  supply_hub: 7,
+  fort: 8,
 };
 
 const RESOURCE_TYPE_INDEX: Record<ResourceType, number> = {
@@ -131,6 +150,28 @@ const DIVISION_STATUS_INDEX: Record<DivisionStatus, number> = {
   ready: 1,
   fighting: 2,
   retreating: 3,
+  moving: 4,
+  landing: 5,
+};
+
+const SUPPLY_STATUS_INDEX: Record<SupplyStatus, number> = {
+  ok: 0,
+  low: 1,
+  critical: 2,
+  none: 3,
+};
+
+const WAR_LOG_KIND_INDEX: Record<WarLogKind, number> = {
+  province_controlled: 0,
+  division_destroyed: 1,
+  ship_sunk: 2,
+  aircraft_lost: 3,
+  convoy_sunk: 4,
+  surrendered: 5,
+  naval_battle: 6,
+  air_battle: 7,
+  invasion: 8,
+  dispute_started: 9,
 };
 
 /**
@@ -319,11 +360,17 @@ function serializeProvince(e: Encoder, p: Province): void {
   e.string(p.name);
   e.u8(TERRAIN_TYPE_INDEX[p.terrain]);
   e.bool(p.isCoastal);
+  e.u8(p.adjacentProvinceIds.length);
+  for (const adjId of p.adjacentProvinceIds) e.u16(adjId);
   e.u8(p.infrastructure);
   e.u8(p.buildingSlots);
   e.u8(p.combatWidth);
   e.u8(p.supplyHubLevel);
   e.u8(p.fortLevel);
+  e.u8(p.portLevel);
+  e.u8(p.airBaseLevel);
+  e.u8(p.adjacentSeaZoneIds.length);
+  for (const zid of p.adjacentSeaZoneIds) e.u16(zid);
   e.u16(p.VP);
 }
 
@@ -429,6 +476,7 @@ function serializeEquipmentPool(e: Encoder, p: EquipmentPool): void {
 function serializeDivision(e: Encoder, d: Division): void {
   e.u32(d.id);
   e.string(d.ownerId);
+  e.string(d.templateId);
   e.u32(d.template.length);
   for (const slot of d.template) {
     e.u8(slot.slot);
@@ -441,10 +489,205 @@ function serializeDivision(e: Encoder, d: Division): void {
   e.u16(d.currentProvinceId);
   e.nullable(d.targetProvinceId, (enc, v) => enc.u16(v));
   e.fixed(d.supply);
+  e.u8(SUPPLY_STATUS_INDEX[d.supplyStatus]);
   e.fixed(d.strength);
   e.fixed(d.trainingProgress);
   e.u8(DIVISION_STATUS_INDEX[d.status]);
   e.bool(d.inOffensive);
+}
+
+function serializeDivisionTemplate(e: Encoder, t: DivisionTemplate): void {
+  e.string(t.id);
+  e.string(t.name);
+  e.u32(t.slots.length);
+  for (const slot of t.slots) {
+    e.u8(slot.slot);
+    e.string(slot.equipmentType);
+  }
+  e.fixed(t.organization);
+  e.fixed(t.hardness);
+  e.fixed(t.softAttack);
+  e.fixed(t.hardAttack);
+  e.fixed(t.politicalCost);
+  const equipKeys = Object.keys(t.equipmentCost).sort();
+  e.u32(equipKeys.length);
+  for (const k of equipKeys) {
+    e.string(k);
+    e.u32(t.equipmentCost[k]);
+  }
+  e.u32(t.trainingTicks);
+}
+
+function serializeProvinceSupply(e: Encoder, ps: ProvinceSupply): void {
+  e.u16(ps.provinceId);
+  e.fixed(ps.level);
+  e.fixed(ps.demand);
+  e.fixed(ps.received);
+  e.bool(ps.viaPort);
+  e.u32(ps.bombedUntilTick);
+}
+
+function serializeSeaSupplyRoute(e: Encoder, r: SeaSupplyRoute): void {
+  e.string(r.id);
+  e.string(r.ownerId);
+  e.u16(r.fromPortId);
+  e.u16(r.toPortId);
+  e.u8(r.pathSeaZoneIds.length);
+  for (const zid of r.pathSeaZoneIds) e.u16(zid);
+  e.u16(r.convoysAssigned);
+  e.fixed(r.efficiency);
+  e.u8(r.escortFleetIds.length);
+  for (const fid of r.escortFleetIds) e.u32(fid);
+}
+
+function serializeSupplyNetwork(e: Encoder, net: SupplyNetwork): void {
+  serializeSortedMap(e, net.provinceSupply, keyI32, serializeProvinceSupply);
+  e.u32(net.seaSupplyRoutes.length);
+  for (const r of net.seaSupplyRoutes) serializeSeaSupplyRoute(e, r);
+  e.u32(net.lastRecalcTick);
+}
+
+function serializeShipTemplate(e: Encoder, t: ShipTemplate): void {
+  e.string(t.id);
+  e.string(t.name);
+  e.string(t.type);
+  e.fixed(t.hp);
+  e.fixed(t.navalAttack);
+  e.fixed(t.subAttack);
+  e.fixed(t.antiSub);
+  e.fixed(t.shoreBombardment);
+  e.fixed(t.antiAir);
+  e.fixed(t.armor);
+  e.fixed(t.speed);
+  e.fixed(t.steelCost);
+  e.u32(t.buildTicks);
+}
+
+function serializeShip(e: Encoder, s: Ship): void {
+  e.u32(s.id);
+  e.string(s.ownerId);
+  e.string(s.templateId);
+  e.string(s.type);
+  e.fixed(s.hp);
+  e.fixed(s.maxHp);
+  e.fixed(s.navalAttack);
+  e.fixed(s.subAttack);
+  e.fixed(s.antiSub);
+  e.fixed(s.shoreBombardment);
+  e.fixed(s.antiAir);
+  e.fixed(s.armor);
+  e.fixed(s.speed);
+  e.u32(s.fleetId);
+}
+
+function serializeFleet(e: Encoder, f: Fleet): void {
+  e.u32(f.id);
+  e.string(f.ownerId);
+  e.string(f.name);
+  e.u16(f.homePortId);
+  e.string(f.status);
+  e.fixed(f.organization);
+  e.fixed(f.strength);
+  e.fixed(f.trainingProgress);
+  e.string(f.mission);
+  if (f.assignedSeaZoneId === null) { e.u8(0); } else { e.u8(1); e.u16(f.assignedSeaZoneId); }
+  if (f.bombardTargetProvinceId === null) { e.u8(0); } else { e.u8(1); e.u16(f.bombardTargetProvinceId); }
+  e.u8(f.shipIds.length);
+  for (const sid of f.shipIds) e.u32(sid);
+}
+
+function serializeSeaZone(e: Encoder, sz: SeaZone): void {
+  e.u16(sz.id);
+  e.string(sz.name);
+  e.u8(sz.adjacentProvinceIds.length);
+  for (const pid of sz.adjacentProvinceIds) e.u16(pid);
+  e.u8(sz.adjacentSeaZoneIds.length);
+  for (const zid of sz.adjacentSeaZoneIds) e.u16(zid);
+}
+
+function serializeSeaControlState(e: Encoder, sc: SeaControlState): void {
+  e.u16(sc.seaZoneId);
+  e.u8(sc.control.length);
+  for (const c of sc.control) {
+    e.string(c.countryId);
+    e.fixed(c.ratio);
+  }
+}
+
+function serializeConvoyRoute(e: Encoder, r: ConvoyRoute): void {
+  e.string(r.id);
+  e.string(r.countryId);
+  e.u16(r.fromProvinceId);
+  e.u16(r.toProvinceId);
+  e.u8(r.seaZoneIds.length);
+  for (const zid of r.seaZoneIds) e.u16(zid);
+  if (r.escortFleetId === null) { e.u8(0); } else { e.u8(1); e.u32(r.escortFleetId); }
+  e.fixed(r.supplyFlow);
+  e.u16(r.convoyCount);
+}
+
+function serializeAirZone(e: Encoder, z: AirZone): void {
+  e.u16(z.id);
+  e.string(z.name);
+  e.u8(z.provinceIds.length);
+  for (const pid of z.provinceIds) e.u16(pid);
+  e.u8(z.seaZoneIds.length);
+  for (const zid of z.seaZoneIds) e.u16(zid);
+}
+
+function serializeWing(e: Encoder, w: AirWing): void {
+  e.u32(w.id);
+  e.string(w.ownerId);
+  e.string(w.name);
+  const atypes = Object.keys(w.aircraft).sort();
+  e.u8(atypes.length);
+  for (const t of atypes) {
+    e.string(t);
+    e.u16(w.aircraft[t]);
+  }
+  e.fixed(w.organization);
+  e.fixed(w.strength);
+  e.fixed(w.trainingProgress);
+  e.string(w.status);
+  e.u16(w.homeBaseId);
+  if (w.carrierFleetId === null) { e.u8(0); } else { e.u8(1); e.u32(w.carrierFleetId); }
+  e.string(w.mission);
+  if (w.assignedAirZoneId === null) { e.u8(0); } else { e.u8(1); e.u16(w.assignedAirZoneId); }
+  if (w.targetProvinceId === null) { e.u8(0); } else { e.u8(1); e.u16(w.targetProvinceId); }
+  if (w.targetSeaZoneId === null) { e.u8(0); } else { e.u8(1); e.u16(w.targetSeaZoneId); }
+}
+
+function serializeAirSuperiorityState(e: Encoder, s: AirSuperiorityState): void {
+  e.u16(s.airZoneId);
+  e.u8(s.control.length);
+  for (const c of s.control) {
+    e.string(c.countryId);
+    e.fixed(c.ratio);
+  }
+}
+
+const INVASION_STATUS_MAP: Record<InvasionPlan['status'], number> = {
+  preparing: 0, ready: 1, launched: 2, success: 3, repelled: 4,
+};
+
+function serializeInvasionPlan(e: Encoder, p: InvasionPlan): void {
+  e.string(p.id);
+  e.string(p.ownerId);
+  e.u16(p.fromProvinceId);
+  e.u16(p.toProvinceId);
+  e.u8(p.divisionIds.length);
+  for (const id of p.divisionIds) e.u16(id);
+  e.u8(p.requiredConvoys);
+  e.fixed(p.preparationProgress);
+  e.u8(INVASION_STATUS_MAP[p.status] ?? 0);
+  e.u8(p.escortFleetIds.length);
+  for (const id of p.escortFleetIds) e.u16(id);
+  e.u8(p.supportWingIds.length);
+  for (const id of p.supportWingIds) e.u16(id);
+  e.i32(p.launchedTick);
+  e.u8(p.pathSeaZoneIds.length);
+  for (const id of p.pathSeaZoneIds) e.u16(id);
+  if (p.targetAirZoneId === null) { e.u8(0); } else { e.u8(1); e.u16(p.targetAirZoneId); }
 }
 
 /** Front 序列化 */
@@ -511,6 +754,68 @@ function serializeDispute(e: Encoder, d: Dispute): void {
     e.string(k);
     e.i32(d.controlledVPs[k]);
   }
+  // surrenderProgress (M1)
+  if (d.surrenderProgress) {
+    const spKeys = Object.keys(d.surrenderProgress).sort();
+    e.u32(spKeys.length);
+    for (const k of spKeys) {
+      e.string(k);
+      e.fixed(d.surrenderProgress[k]);
+    }
+  } else {
+    e.u32(0);
+  }
+  // surrenderThreshold (M1)
+  if (d.surrenderThreshold) {
+    const stKeys = Object.keys(d.surrenderThreshold).sort();
+    e.u32(stKeys.length);
+    for (const k of stKeys) {
+      e.string(k);
+      e.fixed(d.surrenderThreshold[k]);
+    }
+  } else {
+    e.u32(0);
+  }
+  e.i32(d.startTick || 0);
+  e.i32(d.totalVPs || 0);
+}
+
+function serializeWarLosses(e: Encoder, w: CountryWarLosses): void {
+  e.string(w.countryId);
+  e.i32(w.divisionsLost);
+  const shipKeys = Object.keys(w.shipsLost).sort();
+  e.u32(shipKeys.length);
+  for (const k of shipKeys) {
+    e.string(k);
+    e.i32(w.shipsLost[k]);
+  }
+  const airKeys = Object.keys(w.aircraftLost).sort();
+  e.u32(airKeys.length);
+  for (const k of airKeys) {
+    e.string(k);
+    e.i32(w.aircraftLost[k]);
+  }
+  e.i32(w.convoysLost);
+  e.i32(w.provincesLost);
+  e.i32(w.majorCitiesLost);
+  e.bool(w.capitalLost);
+}
+
+function serializeWarLogEntry(e: Encoder, entry: WarLogEntry): void {
+  e.i32(entry.tickId);
+  e.u8(WAR_LOG_KIND_INDEX[entry.kind]);
+  e.string(entry.countryId);
+  e.string(entry.text);
+  if (entry.relatedIds) {
+    e.bool(true);
+    e.nullable(entry.relatedIds.provinceId, (enc, v) => enc.u16(v));
+    e.nullable(entry.relatedIds.fleetId, (enc, v) => enc.i32(v));
+    e.nullable(entry.relatedIds.wingId, (enc, v) => enc.i32(v));
+    e.nullable(entry.relatedIds.divisionId, (enc, v) => enc.i32(v));
+    e.nullable(entry.relatedIds.disputeId, (enc, v) => enc.string(v));
+  } else {
+    e.bool(false);
+  }
 }
 
 /**
@@ -549,12 +854,36 @@ export function serializeWorld(s: WorldState): Uint8Array {
   serializeSortedMap(e, s.productionTasks, keyStr, serializeProductionTask);
   serializeSortedMap(e, s.equipmentPools, keyStr, serializeEquipmentPool);
   serializeSortedMap(e, s.divisions, keyI32, serializeDivision);
+  serializeSortedMap(e, s.divisionTemplates, keyStr, serializeDivisionTemplate);
+  serializeSupplyNetwork(e, s.supplyNetwork);
+  serializeSortedMap(e, s.shipTemplates, keyStr, serializeShipTemplate);
+  serializeSortedMap(e, s.ships, keyI32, serializeShip);
+  serializeSortedMap(e, s.fleets, keyI32, serializeFleet);
+  serializeSortedMap(e, s.seaZones, keyI32, serializeSeaZone);
+  serializeSortedMap(e, s.seaControl, keyI32, serializeSeaControlState);
+  e.u32(s.convoyRoutes.length);
+  for (const r of s.convoyRoutes) serializeConvoyRoute(e, r);
+  serializeSortedMap(e, s.airZones, keyI32, serializeAirZone);
+  serializeSortedMap(e, s.wings, keyI32, serializeWing);
+  serializeSortedMap(e, s.airSuperiority, keyI32, serializeAirSuperiorityState);
+  serializeSortedMap(e, s.invasions, keyStr, serializeInvasionPlan);
   serializeSortedMap(e, s.focusTrees, keyStr, serializeFocusTreeState);
   serializeSortedMap(e, s.research, keyStr, serializeResearchState);
   serializeSortedMap(e, s.disputes, keyStr, serializeDispute);
   serializeSortedMap(e, s.fronts, keyStr, serializeFrontArray);
+  serializeSortedMap(e, s.warLosses, keyStr, serializeWarLosses);
+  e.u32(s.warLog.length);
+  for (const entry of s.warLog) serializeWarLogEntry(e, entry);
+  e.u32(s.selectedUnitIds.length);
+  for (const uid of s.selectedUnitIds) e.i32(uid);
   e.i32(s.nextEntityId);
   serializeSeedMap(e, s.seedMap);
+  e.u8(s.gameOver ? 1 : 0);
+  if (s.gameOver) {
+    e.string(s.gameOver.winnerId);
+    e.string(s.gameOver.loserId);
+    e.u32(s.gameOver.tickId);
+  }
   return e.bytes();
 }
 
@@ -581,11 +910,35 @@ export function hashWorld(s: WorldState): string {
   serializeSortedMap(e, s.productionTasks, keyStr, serializeProductionTask);
   serializeSortedMap(e, s.equipmentPools, keyStr, serializeEquipmentPool);
   serializeSortedMap(e, s.divisions, keyI32, serializeDivision);
+  serializeSortedMap(e, s.divisionTemplates, keyStr, serializeDivisionTemplate);
+  serializeSupplyNetwork(e, s.supplyNetwork);
+  serializeSortedMap(e, s.shipTemplates, keyStr, serializeShipTemplate);
+  serializeSortedMap(e, s.ships, keyI32, serializeShip);
+  serializeSortedMap(e, s.fleets, keyI32, serializeFleet);
+  serializeSortedMap(e, s.seaZones, keyI32, serializeSeaZone);
+  serializeSortedMap(e, s.seaControl, keyI32, serializeSeaControlState);
+  e.u32(s.convoyRoutes.length);
+  for (const r of s.convoyRoutes) serializeConvoyRoute(e, r);
+  serializeSortedMap(e, s.airZones, keyI32, serializeAirZone);
+  serializeSortedMap(e, s.wings, keyI32, serializeWing);
+  serializeSortedMap(e, s.airSuperiority, keyI32, serializeAirSuperiorityState);
+  serializeSortedMap(e, s.invasions, keyStr, serializeInvasionPlan);
   serializeSortedMap(e, s.focusTrees, keyStr, serializeFocusTreeState);
   serializeSortedMap(e, s.research, keyStr, serializeResearchState);
   serializeSortedMap(e, s.disputes, keyStr, serializeDispute);
   serializeSortedMap(e, s.fronts, keyStr, serializeFrontArray);
+  serializeSortedMap(e, s.warLosses, keyStr, serializeWarLosses);
+  e.u32(s.warLog.length);
+  for (const entry of s.warLog) serializeWarLogEntry(e, entry);
+  e.u32(s.selectedUnitIds.length);
+  for (const uid of s.selectedUnitIds) e.i32(uid);
   e.i32(s.nextEntityId);
   serializeSeedMap(e, s.seedMap);
+  e.u8(s.gameOver ? 1 : 0);
+  if (s.gameOver) {
+    e.string(s.gameOver.winnerId);
+    e.string(s.gameOver.loserId);
+    e.u32(s.gameOver.tickId);
+  }
   return e.finalizeHash();
 }

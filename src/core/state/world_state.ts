@@ -45,6 +45,37 @@ export interface Front {
  *
  * 所有容器统一使用 SortedMap，保证遍历顺序确定性。
  */
+export interface CountryWarLosses {
+  countryId: string;
+  divisionsLost: number;
+  shipsLost: Record<string, number>;
+  aircraftLost: Record<string, number>;
+  convoysLost: number;
+  provincesLost: number;
+  majorCitiesLost: number;
+  capitalLost: boolean;
+}
+
+export type WarLogKind =
+  | 'province_controlled'
+  | 'division_destroyed'
+  | 'ship_sunk'
+  | 'aircraft_lost'
+  | 'convoy_sunk'
+  | 'surrendered'
+  | 'naval_battle'
+  | 'air_battle'
+  | 'invasion'
+  | 'dispute_started';
+
+export interface WarLogEntry {
+  tickId: number;
+  kind: WarLogKind;
+  countryId: string;
+  text: string;
+  relatedIds?: { provinceId?: number; fleetId?: number; wingId?: number; divisionId?: number; disputeId?: string };
+}
+
 export interface WorldState {
   version: string;
   /** 全局 seed（Host 开局生成） */
@@ -70,17 +101,43 @@ export interface WorldState {
   /** 按国家 ID 索引 */
   equipmentPools: SortedMap<string, EquipmentPool>;
   divisions: SortedMap<number, Division>;
+  /** 师团模板库（M2 兵种卡系统） */
+  divisionTemplates: SortedMap<string, DivisionTemplate>;
+  supplyNetwork: SupplyNetwork;
   focusTrees: SortedMap<string, FocusTreeState>;
   research: SortedMap<string, ResearchState>;
   /** 区域争端记录（S.2 脱敏：原 wars 字段重命名） */
   disputes: SortedMap<string, Dispute>;
   /** 按 attackerId 索引的前线列表 */
   fronts: SortedMap<string, Front[]>;
+  /** 国家累计损失（M1 feature-grand-war） */
+  warLosses: SortedMap<string, CountryWarLosses>;
+  /** 战争日志环形缓存，最近50条（M1 feature-grand-war） */
+  warLog: WarLogEntry[];
+  /** 当前选中的单位ID列表（师团/舰队/联队，M1选中师团用） */
+  selectedUnitIds: number[];
 
   /** 全局自增 ID */
   nextEntityId: number;
   /** 对象 → PRNG 种子（技术设计文档 2.2，Host 同步） */
   seedMap: Record<string, number>;
+
+  /** M2 胜负标记：null=进行中，{winnerId:'p1', loserId:'e1'} 表示胜负已分 */
+  gameOver: { winnerId: string; loserId: string; tickId: number } | null;
+
+  /** M3 海军系统 */
+  shipTemplates: SortedMap<string, ShipTemplate>;
+  ships: SortedMap<number, Ship>;
+  fleets: SortedMap<number, Fleet>;
+  seaZones: SortedMap<number, SeaZone>;
+  seaControl: SortedMap<number, SeaControlState>;
+  convoyRoutes: ConvoyRoute[];
+  /** M4 空军系统 */
+  airZones: SortedMap<number, AirZone>;
+  wings: SortedMap<number, AirWing>;
+  airSuperiority: SortedMap<number, AirSuperiorityState>;
+  /** M5 登陆作战计划 */
+  invasions: SortedMap<string, InvasionPlan>;
 }
 
 /**
@@ -140,6 +197,8 @@ export interface Province {
   name: string;
   terrain: TerrainType;
   isCoastal: boolean;
+  /** 相邻省份ID列表（用于移动/进攻路径判定） */
+  adjacentProvinceIds: number[];
   /** 基础设施等级 0-10 */
   infrastructure: number;
   /** 建筑槽位（基础 1 + floor(infra / 3)，上限 4） */
@@ -148,6 +207,12 @@ export interface Province {
   combatWidth: number;
   supplyHubLevel: number;
   fortLevel: number;
+  /** 港口等级（dockyard 建筑等级 ≥1 时启用；0=无港口） */
+  portLevel: number;
+  /** 相邻海域 ID（M3 海军系统） */
+  adjacentSeaZoneIds: number[];
+  /** 机场等级（air_base 建筑等级；0=无机场，M4） */
+  airBaseLevel: number;
   /** 胜利点 */
   VP: number;
 }
@@ -283,7 +348,265 @@ export interface EquipmentPool {
 /**
  * 师团状态
  */
-export type DivisionStatus = 'training' | 'ready' | 'fighting' | 'retreating';
+export type DivisionStatus = 'training' | 'ready' | 'fighting' | 'retreating' | 'moving' | 'landing';
+
+/**
+ * 师团模板（M2 兵种卡系统）
+ *
+ * 4槽位编制，每个槽位引用装备类型；模板定义师团的基础属性和招募成本。
+ */
+export interface DivisionTemplate {
+  id: string;
+  name: string;
+  /** 4 个槽位的装备类型 */
+  slots: { slot: number; equipmentType: string }[];
+  /** 基础组织度 */
+  organization: Fixed;
+  /** 基础硬度（0-1） */
+  hardness: Fixed;
+  /** 基础软攻 */
+  softAttack: Fixed;
+  /** 基础硬攻 */
+  hardAttack: Fixed;
+  /** 招募政治点消耗 */
+  politicalCost: Fixed;
+  /** 各装备类型需求数量 */
+  equipmentCost: Record<string, number>;
+  /** 训练所需 tick 数（基础 600） */
+  trainingTicks: number;
+}
+
+/**
+ * 舰船类型（M3）
+ */
+export type ShipType = 'destroyer' | 'cruiser' | 'battleship' | 'carrier' | 'submarine' | 'convoy';
+
+/**
+ * 舰船模板（M3）
+ */
+export interface ShipTemplate {
+  id: string;
+  name: string;
+  type: ShipType;
+  /** HP */
+  hp: Fixed;
+  /** 对舰攻击 */
+  navalAttack: Fixed;
+  /** 对潜攻击 */
+  subAttack: Fixed;
+  /** 反潜 */
+  antiSub: Fixed;
+  /** 对地炮击（岸轰） */
+  shoreBombardment: Fixed;
+  /** 防空 */
+  antiAir: Fixed;
+  /** 护甲 */
+  armor: Fixed;
+  /** 速度（km/h, Fixed） */
+  speed: Fixed;
+  /** 建造花费钢铁 */
+  steelCost: Fixed;
+  /** 建造花费（tick 数） */
+  buildTicks: number;
+}
+
+/**
+ * 舰船个体（M3）
+ */
+export interface Ship {
+  id: number;
+  ownerId: string;
+  templateId: string;
+  type: ShipType;
+  hp: Fixed;
+  maxHp: Fixed;
+  navalAttack: Fixed;
+  subAttack: Fixed;
+  antiSub: Fixed;
+  shoreBombardment: Fixed;
+  antiAir: Fixed;
+  armor: Fixed;
+  speed: Fixed;
+  /** 所属舰队 ID */
+  fleetId: number;
+}
+
+/**
+ * 舰队任务类型（M3）
+ */
+export type FleetMission =
+  | 'idle'           // 在港待命
+  | 'patrol'         // 巡逻（seek and engage）
+  | 'convoy_escort'  // 护航运输船
+  | 'shore_bombard'  // 岸轰支援
+  | 'interdiction';  // 破交拦截
+
+/**
+ * 舰队状态（M3）
+ */
+export type FleetStatus = 'training' | 'idle' | 'on_mission' | 'combat' | 'retreating';
+
+/**
+ * 舰队（M3）
+ */
+export interface Fleet {
+  id: number;
+  ownerId: string;
+  name: string;
+  /** 停泊港口省份 ID（idle/training 时） */
+  homePortId: number;
+  /** 当前状态 */
+  status: FleetStatus;
+  /** 组织度 0-1 */
+  organization: Fixed;
+  /** 战力 0-1（反映舰船完好度） */
+  strength: Fixed;
+  /** 训练进度 0-1（新招募舰队从 0.3 开始，满 1 可执行任务） */
+  trainingProgress: Fixed;
+  /** 当前任务 */
+  mission: FleetMission;
+  /** 执行任务的海域 ID（patrol/escort/bombard/interdiction） */
+  assignedSeaZoneId: number | null;
+  /** 岸轰目标省份 ID（mission=shore_bombard 时） */
+  bombardTargetProvinceId: number | null;
+  /** 舰船 ID 列表 */
+  shipIds: number[];
+}
+
+/**
+ * 海域（M3）
+ */
+export interface SeaZone {
+  id: number;
+  name: string;
+  /** 相邻陆地省份 ID（沿海） */
+  adjacentProvinceIds: number[];
+  /** 相邻海域 ID */
+  adjacentSeaZoneIds: number[];
+}
+
+/**
+ * 制海权状态（M3）
+ */
+export interface SeaControlState {
+  seaZoneId: number;
+  /** 国家 ID → 控制权比例 0-1 */
+  control: { countryId: string; ratio: Fixed }[];
+}
+
+/**
+ * 空军任务类型（M4）
+ */
+export type AirMission =
+  | 'idle'               // 驻机场待命
+  | 'air_superiority'    // 争夺制空权
+  | 'cas'                // 近距空中支援
+  | 'ground_attack'      // 对地打击
+  | 'port_strike'        // 港口袭击
+  | 'naval_strike'       // 对海打击
+  | 'naval_fighter_patrol'; // 舰载机巡逻
+
+/**
+ * 空军联队状态（M4）
+ */
+export type WingStatus = 'training' | 'idle' | 'on_mission' | 'combat' | 'retreating' | 'carrier_based';
+
+/**
+ * 空军联队（M4）
+ */
+export interface AirWing {
+  id: number;
+  ownerId: string;
+  name: string;
+  /** 各机型数量（type → count，100架=满编联队） */
+  aircraft: Record<string, number>;
+  /** 组织度 0-1 */
+  organization: Fixed;
+  /** 战力 0-1 */
+  strength: Fixed;
+  /** 训练进度 0-1 */
+  trainingProgress: Fixed;
+  status: WingStatus;
+  /** 驻地省 ID（机场省；carrier_based 时为 -1 表示在航母上） */
+  homeBaseId: number;
+  /** 搭载的航母舰队 ID（仅 carrier_based 时使用） */
+  carrierFleetId: number | null;
+  /** 当前任务 */
+  mission: AirMission;
+  /** 执行任务的空域 ID */
+  assignedAirZoneId: number | null;
+  /** 打击目标省 ID（ground_attack/port_strike 时） */
+  targetProvinceId: number | null;
+  /** 打击目标海域 ID（naval_strike 时） */
+  targetSeaZoneId: number | null;
+}
+
+/**
+ * 空域（M4）
+ */
+export interface AirZone {
+  id: number;
+  name: string;
+  /** 覆盖省份 */
+  provinceIds: number[];
+  /** 覆盖海域 */
+  seaZoneIds: number[];
+}
+
+/**
+ * 制空权状态（M4）
+ */
+export interface AirSuperiorityState {
+  airZoneId: number;
+  /** 国家 ID → 制空权比例 0-1 */
+  control: { countryId: string; ratio: Fixed }[];
+}
+
+/**
+ * M5 登陆作战
+ */
+export type InvasionStatus = 'preparing' | 'ready' | 'launched' | 'success' | 'repelled';
+
+export interface InvasionPlan {
+  id: string;
+  ownerId: string;
+  fromProvinceId: number;
+  toProvinceId: number;
+  divisionIds: number[];
+  requiredConvoys: number;
+  preparationProgress: Fixed;
+  status: InvasionStatus;
+  escortFleetIds: number[];
+  supportWingIds: number[];
+  /** 登陆发起 tick */
+  launchedTick: number;
+  /** 路径经过的海域 ID（用于判定制海权） */
+  pathSeaZoneIds: number[];
+  /** 目标空域 ID（用于判定制空权） */
+  targetAirZoneId: number | null;
+}
+
+/**
+ * 运输航线（M3，海运补给）
+ */
+export interface ConvoyRoute {
+  id: string;
+  countryId: string;
+  /** 起点港口省份 */
+  fromProvinceId: number;
+  /** 终点港口省份 */
+  toProvinceId: number;
+  /** 途经海域 */
+  seaZoneIds: number[];
+  /** 执行护航的舰队 ID（可选） */
+  escortFleetId: number | null;
+  /** 该航线输送的补给强度 0-1 */
+  supplyFlow: Fixed;
+  /** 运输船数量 */
+  convoyCount: number;
+}
+
+export type SupplyStatus = 'ok' | 'low' | 'critical' | 'none';
 
 /**
  * 部队（技术设计文档 3.7）
@@ -293,6 +616,8 @@ export type DivisionStatus = 'training' | 'ready' | 'fighting' | 'retreating';
 export interface Division {
   id: number;
   ownerId: string;
+  /** 使用的模板 ID */
+  templateId: string;
   /** 编制（4 兵种卡，引用装备类型） */
   template: { slot: number; equipmentType: string }[];
   organization: Fixed;
@@ -305,6 +630,8 @@ export interface Division {
   targetProvinceId: number | null;
   /** 补给状态（0-1，1 = 满补给） */
   supply: Fixed;
+  /** 补给档位 */
+  supplyStatus: SupplyStatus;
   /** 当前强度（人员 / 装备饱满度，0-1） */
   strength: Fixed;
   /** 训练进度 0-1 */
@@ -313,6 +640,32 @@ export interface Division {
   status: DivisionStatus;
   /** 是否在进攻中 */
   inOffensive: boolean;
+}
+
+export interface ProvinceSupply {
+  provinceId: number;
+  level: Fixed;
+  demand: Fixed;
+  received: Fixed;
+  viaPort: boolean;
+  bombedUntilTick: number;
+}
+
+export interface SeaSupplyRoute {
+  id: string;
+  ownerId: string;
+  fromPortId: number;
+  toPortId: number;
+  pathSeaZoneIds: number[];
+  convoysAssigned: number;
+  efficiency: Fixed;
+  escortFleetIds: number[];
+}
+
+export interface SupplyNetwork {
+  provinceSupply: SortedMap<number, ProvinceSupply>;
+  seaSupplyRoutes: SeaSupplyRoute[];
+  lastRecalcTick: number;
 }
 
 /**
@@ -374,6 +727,14 @@ export interface Dispute {
   disputeGoals: string[];
   /** 已管控的胜利点（S.2 脱敏：原 occupiedVPs），按国家 ID 索引 */
   controlledVPs: Record<string, number>;
+  /** 双方投降倾向 0-1（M1 feature-grand-war），达到surrenderThreshold时投降 */
+  surrenderProgress: Record<string, Fixed>;
+  /** 双方投降阈值（M1 feature-grand-war），主要国0.8，次要国0.6 */
+  surrenderThreshold: Record<string, Fixed>;
+  /** 争端开始tick（M1 feature-grand-war） */
+  startTick: number;
+  /** 总VP数（M1 feature-grand-war，缓存用于计算投降增长） */
+  totalVPs: number;
 }
 
 /**
