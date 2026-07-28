@@ -39,10 +39,20 @@ const TRADE_OUTPUT = Fixed.fromInt(50);
 const TRADE_MAX_FACTORIES = 2;
 const TRADE_THRESHOLD = Fixed.HALF;
 
-const EQUIPMENT_TEMPLATES: Record<string, { cycleSec: Fixed; output: number }> = {
-  infantry_equipment: { cycleSec: Fixed.fromInt(30), output: 10 },
-  artillery: { cycleSec: Fixed.fromInt(60), output: 2 },
-  light_tank: { cycleSec: Fixed.fromInt(90), output: 1 },
+const EQUIPMENT_TEMPLATES: Record<string, { cycleSec: Fixed; output: number; factoryType?: 'military' | 'dockyard' }> = {
+  infantry_equipment: { cycleSec: Fixed.fromInt(30), output: 10, factoryType: 'military' },
+  artillery: { cycleSec: Fixed.fromInt(60), output: 2, factoryType: 'military' },
+  light_tank: { cycleSec: Fixed.fromInt(90), output: 1, factoryType: 'military' },
+  convoy: { cycleSec: Fixed.fromInt(50), output: 2, factoryType: 'dockyard' },
+  destroyer: { cycleSec: Fixed.fromInt(180), output: 1, factoryType: 'dockyard' },
+  cruiser: { cycleSec: Fixed.fromInt(300), output: 1, factoryType: 'dockyard' },
+  battleship: { cycleSec: Fixed.fromInt(600), output: 1, factoryType: 'dockyard' },
+  carrier: { cycleSec: Fixed.fromInt(800), output: 1, factoryType: 'dockyard' },
+  submarine: { cycleSec: Fixed.fromInt(220), output: 1, factoryType: 'dockyard' },
+  fighter: { cycleSec: Fixed.fromInt(40), output: 4, factoryType: 'military' },
+  cas: { cycleSec: Fixed.fromInt(55), output: 2, factoryType: 'military' },
+  tactical_bomber: { cycleSec: Fixed.fromInt(90), output: 1, factoryType: 'military' },
+  naval_fighter: { cycleSec: Fixed.fromInt(50), output: 2, factoryType: 'military' },
 };
 
 const TRADE_RESOURCE_TYPES: ResourceType[] = ['steel', 'oil', 'tungsten', 'rubber', 'aluminum'];
@@ -380,19 +390,37 @@ export class DefaultFactorySystem implements FactorySystem {
   }
 
   /**
-   * 应用生产线模板：把军厂分配到装备生产任务
+   * 应用生产线模板：把对应类型工厂分配到装备生产任务
+   *
+   * 根据装备类型自动选择工厂类型：
+   * - infantry_equipment/artillery/light_tank → military 工厂
+   * - convoy/destroyer/cruiser/battleship/carrier/submarine → dockyard 船坞
    */
   applyTemplate(state: WorldState, factoryIds: number[], templateId: string): void {
     let targetCountryId: string | null = null;
+    const equipInfo = EQUIPMENT_TEMPLATES[templateId];
+    const requiredFactoryType: 'military' | 'dockyard' =
+      equipInfo?.factoryType === 'dockyard' ? 'dockyard' : 'military';
+
     for (const id of factoryIds) {
       const factory = state.factories.get(id);
-      if (factory && factory.type === 'military') {
+      if (factory && factory.type === requiredFactoryType) {
         const province = state.provinces.get(factory.provinceId);
         if (province) {
           targetCountryId = province.controllerId;
           break;
         }
       }
+    }
+    if (!targetCountryId) {
+      state.factories.forEach((factory) => {
+        if (factory.type === requiredFactoryType) {
+          const province = state.provinces.get(factory.provinceId);
+          if (province) {
+            targetCountryId = province.controllerId;
+          }
+        }
+      });
     }
     if (!targetCountryId) return;
 
@@ -407,6 +435,8 @@ export class DefaultFactorySystem implements FactorySystem {
       equipmentType = 'artillery';
     } else if (templateId === 'light_tank' || templateId === 'tank') {
       equipmentType = 'light_tank';
+    } else if (EQUIPMENT_TEMPLATES[templateId]) {
+      equipmentType = templateId;
     }
 
     if (!task) {
@@ -430,7 +460,7 @@ export class DefaultFactorySystem implements FactorySystem {
 
     for (const id of factoryIds) {
       const factory = state.factories.get(id);
-      if (!factory || factory.type !== 'military') continue;
+      if (!factory || factory.type !== requiredFactoryType) continue;
       const province = state.provinces.get(factory.provinceId);
       if (!province || province.controllerId !== countryId) continue;
 
@@ -445,18 +475,18 @@ export class DefaultFactorySystem implements FactorySystem {
 
   private ensureEquipmentPool(state: WorldState, countryId: string): EquipmentPool {
     let pool = state.equipmentPools.get(countryId);
+    const required = [
+      'infantry_equipment', 'artillery', 'light_tank',
+      'convoy', 'destroyer', 'cruiser', 'battleship', 'carrier', 'submarine',
+      'fighter', 'cas', 'tactical_bomber', 'naval_fighter',
+    ];
     if (!pool) {
       pool = {
         countryId,
-        stocks: [
-          { type: 'infantry_equipment', count: 0 },
-          { type: 'artillery', count: 0 },
-          { type: 'light_tank', count: 0 },
-        ],
+        stocks: required.map((t) => ({ type: t, count: 0 })),
       };
       state.equipmentPools.set(countryId, pool);
     } else {
-      const required = ['infantry_equipment', 'artillery', 'light_tank'];
       for (const t of required) {
         if (!pool.stocks.find(s => s.type === t)) {
           pool.stocks.push({ type: t, count: 0 });
