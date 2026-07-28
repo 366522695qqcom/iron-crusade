@@ -53,6 +53,8 @@ export type {
   ResearchLine,
   ResearchNode,
   ResearchBonus,
+  DiplomacySystem,
+  SupplySystem,
 } from './interfaces';
 
 // 子系统实现（spec implement-core-simulation）
@@ -64,6 +66,10 @@ export { DefaultSimulation } from './simulation';
 // spec implement-focus-research T1/T2：新增焦点/科研系统实现
 export { DefaultFocusSystem } from './focus_system';
 export { DefaultResearchSystem } from './research_system';
+// M2 外交系统
+export { DefaultDiplomacySystem } from './diplomacy_system';
+// M2 补给系统
+export { DefaultSupplySystem } from './supply_system';
 
 // 确定性哈希（core/state/hash.ts，技术设计文档 C.3）
 export type { Encoder } from '../state/hash';
