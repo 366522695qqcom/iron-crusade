@@ -60,27 +60,31 @@ function makePlayState(): WorldState {
   const provinces = new SortedMap<number, Province>();
   provinces.set(1, {
     id: 1, ownerId: PLAYER, controllerId: PLAYER, name: '首都',
-    terrain: 'plains', isCoastal: false,
+    terrain: 'plains', isCoastal: false, adjacentProvinceIds: [3],
     infrastructure: 3, buildingSlots: 6, combatWidth: 10,
-    supplyHubLevel: 2, fortLevel: 1, VP: 15,
+    supplyHubLevel: 2, fortLevel: 1, portLevel: 0, airBaseLevel: 2,
+    adjacentSeaZoneIds: [], VP: 15,
   });
   provinces.set(3, {
     id: 3, ownerId: PLAYER, controllerId: PLAYER, name: '边境省',
-    terrain: 'plains', isCoastal: false,
+    terrain: 'plains', isCoastal: false, adjacentProvinceIds: [1, 4],
     infrastructure: 2, buildingSlots: 4, combatWidth: 8,
-    supplyHubLevel: 1, fortLevel: 0, VP: 5,
+    supplyHubLevel: 1, fortLevel: 0, portLevel: 0, airBaseLevel: 1,
+    adjacentSeaZoneIds: [], VP: 5,
   });
   provinces.set(2, {
     id: 2, ownerId: ENEMY, controllerId: ENEMY, name: '敌首都',
-    terrain: 'plains', isCoastal: false,
+    terrain: 'plains', isCoastal: false, adjacentProvinceIds: [4],
     infrastructure: 2, buildingSlots: 4, combatWidth: 8,
-    supplyHubLevel: 1, fortLevel: 1, VP: 15,
+    supplyHubLevel: 1, fortLevel: 1, portLevel: 0, airBaseLevel: 2,
+    adjacentSeaZoneIds: [], VP: 15,
   });
   provinces.set(4, {
     id: 4, ownerId: ENEMY, controllerId: ENEMY, name: '敌边境',
-    terrain: 'plains', isCoastal: false,
+    terrain: 'plains', isCoastal: false, adjacentProvinceIds: [3, 2],
     infrastructure: 1, buildingSlots: 3, combatWidth: 6,
-    supplyHubLevel: 0, fortLevel: 0, VP: 3,
+    supplyHubLevel: 0, fortLevel: 0, portLevel: 0, airBaseLevel: 0,
+    adjacentSeaZoneIds: [], VP: 3,
   });
 
   const stockpiles = new SortedMap<string, WorldState['stockpiles'] extends SortedMap<infer K, infer V> ? V : never>();
@@ -161,12 +165,28 @@ function makePlayState(): WorldState {
     productionTasks: new SortedMap(),
     equipmentPools,
     divisions: new SortedMap(),
+    divisionTemplates: new SortedMap(),
+    supplyNetwork: { provinceSupply: new SortedMap(), seaSupplyRoutes: [], lastRecalcTick: 0 },
     focusTrees: new SortedMap(),
     research: new SortedMap(),
     disputes: new SortedMap(),
     fronts: new SortedMap(),
+    warLosses: new SortedMap(),
+    warLog: [],
+    selectedUnitIds: [],
     nextEntityId: 200,
     seedMap: { [PLAYER]: 1001, [ENEMY]: 2002 },
+    gameOver: null,
+    shipTemplates: new SortedMap(),
+    ships: new SortedMap(),
+    fleets: new SortedMap(),
+    seaZones: new SortedMap(),
+    seaControl: new SortedMap(),
+    convoyRoutes: [],
+    airZones: new SortedMap(),
+    wings: new SortedMap(),
+    airSuperiority: new SortedMap(),
+    invasions: new SortedMap(),
   };
 }
 
@@ -210,7 +230,7 @@ function countDivisionsIn(state: WorldState, cid: string, status?: string): numb
   return n;
 }
 
-/** 模拟"一键平衡"：把玩家的空闲民厂分配到建造队列首个未完成项；若没有建造项则分配到贸易任务 */
+/** 模拟“一键平衡”：把玩家的空闲民厂分配到建造队列首个未完成项；若没有建造项则分配到贸易任务 */
 function oneClickBalanceActions(state: WorldState): PlayerAction[] {
   const acts: PlayerAction[] = [];
   const queue = state.constructionQueues.get(PLAYER);
@@ -441,17 +461,19 @@ describe('玩家流程游玩测试 (Playthrough)', () => {
 
     // ============ 推进战斗直到占领省4 ============
     let provinceControlledCount = 0;
-    let disputeResolvedCount = 0;
-    // 先统计 issueOffensive 这一 tick 内已经发生的事件
+    let surrenderedCount = 0;
+    let divisionDestroyedCount = 0;
     for (const ev of r.events) {
       if (ev.kind === 'provinceControlled') provinceControlledCount++;
-      if (ev.kind === 'disputeResolved') disputeResolvedCount++;
+      if (ev.kind === 'surrendered') surrenderedCount++;
+      if (ev.kind === 'divisionDestroyed') divisionDestroyedCount++;
     }
     for (let i = 0; i < 1000; i++) {
       r = tick(frameId++, oneClickBalanceActions(state));
       for (const ev of r.events) {
         if (ev.kind === 'provinceControlled') provinceControlledCount++;
-        if (ev.kind === 'disputeResolved') disputeResolvedCount++;
+        if (ev.kind === 'surrendered') surrenderedCount++;
+        if (ev.kind === 'divisionDestroyed') divisionDestroyedCount++;
       }
       if (provinceControlledCount >= 1) break;
     }
@@ -460,7 +482,6 @@ describe('玩家流程游玩测试 (Playthrough)', () => {
     expect(provinceControlledCount).toBeGreaterThanOrEqual(1);
 
     // ============ 继续进攻敌首都（省2） ============
-    // 师团已自动移至省4，再次下令进攻省2
     const div2 = state.divisions.get(playerDivId)!;
     div2.strength = Fixed.ONE;
     div2.organization = Fixed.ONE;
@@ -469,27 +490,29 @@ describe('玩家流程游玩测试 (Playthrough)', () => {
     ]);
     for (const ev of r.events) {
       if (ev.kind === 'provinceControlled') provinceControlledCount++;
-      if (ev.kind === 'disputeResolved') disputeResolvedCount++;
+      if (ev.kind === 'surrendered') surrenderedCount++;
+      if (ev.kind === 'divisionDestroyed') divisionDestroyedCount++;
     }
 
-    // 再画前线：4→2
     r = tick(frameId++, [{ kind: 'drawFront', fromProvince: 4, toProvince: 2 }]);
     for (const ev of r.events) {
       if (ev.kind === 'provinceControlled') provinceControlledCount++;
-      if (ev.kind === 'disputeResolved') disputeResolvedCount++;
+      if (ev.kind === 'surrendered') surrenderedCount++;
+      if (ev.kind === 'divisionDestroyed') divisionDestroyedCount++;
     }
 
-    let capturedCapital = state.provinces.get(2)!.controllerId === PLAYER;
+    let capturedCapital = false;
     for (let i = 0; i < 2000; i++) {
       r = tick(frameId++, oneClickBalanceActions(state));
       for (const ev of r.events) {
         if (ev.kind === 'provinceControlled') provinceControlledCount++;
-        if (ev.kind === 'disputeResolved') disputeResolvedCount++;
+        if (ev.kind === 'surrendered') surrenderedCount++;
+        if (ev.kind === 'divisionDestroyed') divisionDestroyedCount++;
       }
       if (state.provinces.get(2)!.controllerId === PLAYER) {
         capturedCapital = true;
-        break;
       }
+      if (surrenderedCount >= 1) break;
     }
 
     const p4 = state.provinces.get(4)!;
@@ -497,15 +520,16 @@ describe('玩家流程游玩测试 (Playthrough)', () => {
     const playerControlled: string[] = [];
     state.provinces.forEach((pr) => { if (pr.controllerId === PLAYER) playerControlled.push(`${pr.name}(VP${pr.VP})`); });
     const divAfter = state.divisions.get(playerDivId);
+    const warLogCount = state.warLog.length;
     log(`T${state.tickId} 战斗结果`,
       `敌边境[${p4.name}]控=${p4.controllerId}；敌首都[${p2.name}]控=${p2.controllerId}（已占=${capturedCapital}）；` +
-      `省管控事件${provinceControlledCount}次；争端结算${disputeResolvedCount}次；` +
+      `省管控事件${provinceControlledCount}次；投降事件${surrenderedCount}次；师团被歼${divisionDestroyedCount}次；战争日志${warLogCount}条；` +
       `玩家控制:${playerControlled.join(',')}；` +
       (divAfter ? `师团status=${divAfter.status} str=${fmtFixed(divAfter.strength)} org=${fmtFixed(divAfter.organization)}` : '师团已歼灭'));
 
     expect(p4.controllerId).toBe(PLAYER);
     expect(provinceControlledCount).toBeGreaterThanOrEqual(2);
-    expect(disputeResolvedCount).toBeGreaterThanOrEqual(1);
+    expect(surrenderedCount).toBeGreaterThanOrEqual(1);
     expect(capturedCapital).toBe(true);
 
     // ============ 终局报告 ============
@@ -519,9 +543,10 @@ describe('玩家流程游玩测试 (Playthrough)', () => {
     expect(eventKinds['productionCompleted'] || 0).toBeGreaterThanOrEqual(1);
     expect(eventKinds['buildingCompleted'] || 0).toBeGreaterThanOrEqual(2);
     expect(frontCount).toBeGreaterThanOrEqual(1);
-    expect(eventKinds['provinceControlled'] || 0).toBeGreaterThanOrEqual(2); // 至少占领省4+省2
-    expect(eventKinds['disputeResolved'] || 0).toBeGreaterThanOrEqual(1);    // 战争以投降告终
-    expect(state.provinces.get(2)!.controllerId).toBe(PLAYER);               // 敌首都已占
+    expect(eventKinds['provinceControlled'] || 0).toBeGreaterThanOrEqual(2);
+    expect(eventKinds['surrendered'] || 0).toBeGreaterThanOrEqual(1);
+    expect(state.provinces.get(2)!.controllerId).toBe(PLAYER);
+    expect(state.warLog.length).toBeGreaterThanOrEqual(1);
 
     // 确定性：双实例复现300帧 hash 一致
     const simA = DefaultSimulation.create(makePlayState());
