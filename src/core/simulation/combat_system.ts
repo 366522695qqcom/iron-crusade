@@ -1,11 +1,11 @@
 /**
- * 战斗系统默认实现（feature-combat-skeleton T2）
+ * 战斗系统默认实现（feature-combat-skeleton T2 + M1）
  *
  * 职责：
  * - 发起争端（initiateDispute）
  * - 绘制前线（drawFront）
  * - 下达攻势（issueOffensive）
- * - 骰子战斗推进（advanceTick）：省份易主、VP扣分、决心结算
+ * - 骰子战斗推进（advanceTick）：省份易主、VP扣分、师团损耗
  */
 import { Fixed } from '../determinism/fixed';
 import { PRNG } from '../determinism/prng';
@@ -13,17 +13,19 @@ import { WorldState, Dispute } from '../state/world_state';
 import { GameEvent } from './types';
 import { CombatSystem } from './interfaces';
 
-const BASE_DEFENSE = Fixed.fromInt(20);
+const BASE_DEFENSE = Fixed.fromInt(5);
 const FORT_DEFENSE_PER_LEVEL = Fixed.fromInt(5);
-const DISPUTE_RESOLVE_INIT = Fixed.fromNumber(0.5);
-const DISPUTE_RESOLVE_LOSS_PER_VP = Fixed.fromNumber(0.1);
-const DISPUTE_RESOLVE_SURRENDER = Fixed.fromNumber(0.1);
 const ORG_LOSS_PER_DEFEAT = Fixed.fromNumber(0.2);
 const STRENGTH_LOSS_PER_DEFEAT = Fixed.fromNumber(0.15);
 const DICE_ROLL_LOW = Fixed.fromNumber(0.8);
 const DICE_ROLL_RANGE = Fixed.fromNumber(0.4);
 const ATTACKER_ORG_LOSS_SUCCESS = Fixed.fromNumber(0.1);
 const ATTACKER_ORG_MIN = Fixed.fromNumber(0.2);
+
+const SUPPLY_ATTACK_MOD_OK = Fixed.ONE;
+const SUPPLY_ATTACK_MOD_LOW = Fixed.fromNumber(0.8);
+const SUPPLY_ATTACK_MOD_CRITICAL = Fixed.fromNumber(0.5);
+const SUPPLY_ATTACK_MOD_NONE = Fixed.fromNumber(0.2);
 
 export class DefaultCombatSystem implements CombatSystem {
   initiateDispute(state: WorldState, attackerId: string, targetId: string): string | null {
@@ -38,14 +40,18 @@ export class DefaultCombatSystem implements CombatSystem {
       participants: [attackerId, targetId],
       participantSet: new Set([attackerId, targetId]),
       disputeResolve: {
-        [attackerId]: DISPUTE_RESOLVE_INIT,
-        [targetId]: DISPUTE_RESOLVE_INIT,
+        [attackerId]: Fixed.fromNumber(0.5),
+        [targetId]: Fixed.fromNumber(0.5),
       },
       disputeGoals: [],
       controlledVPs: {
         [attackerId]: 0,
         [targetId]: 0,
       },
+      surrenderProgress: {},
+      surrenderThreshold: {},
+      startTick: state.tickId,
+      totalVPs: 0,
     };
     state.disputes.set(id, dispute);
     return id;
@@ -81,6 +87,7 @@ export class DefaultCombatSystem implements CombatSystem {
       if (!div) continue;
       if (div.ownerId !== countryId) continue;
       if (div.status !== 'ready') continue;
+      if (div.supplyStatus === 'critical' || div.supplyStatus === 'none') continue;
       div.inOffensive = true;
       div.status = 'fighting';
       div.targetProvinceId = targetProvince;
@@ -89,7 +96,6 @@ export class DefaultCombatSystem implements CombatSystem {
 
   advanceTick(state: WorldState, _dtMs: Fixed): GameEvent[] {
     const events: GameEvent[] = [];
-    const resolvedDisputeIds: string[] = [];
 
     state.disputes.forEach((dispute) => {
       const fightingDivs: number[] = [];
@@ -120,14 +126,61 @@ export class DefaultCombatSystem implements CombatSystem {
 
         const attackerStats = div.softAttack.mul(div.strength).mul(div.organization);
 
+        let bombardMod = Fixed.ONE;
+        if (targetProv.isCoastal) {
+          let bombardStrength = Fixed.ZERO;
+          state.fleets.forEach((f) => {
+            if (f.ownerId !== div.ownerId) return;
+            if (f.mission !== 'shore_bombard') return;
+            if (f.bombardTargetProvinceId !== targetProv.id) return;
+            for (const sid of f.shipIds) {
+              const s = state.ships.get(sid);
+              if (s) bombardStrength = bombardStrength.add(s.shoreBombardment);
+            }
+          });
+          if (bombardStrength.greaterThan(Fixed.ZERO)) {
+            bombardMod = Fixed.ONE.add(bombardStrength.div(Fixed.fromInt(100)).min(Fixed.fromNumber(0.3)));
+          }
+        }
+
+        let casMod = Fixed.ONE;
+        let totalCAS = Fixed.ZERO;
+        state.wings.forEach((w) => {
+          if (w.ownerId !== div.ownerId) return;
+          if (w.mission !== 'cas') return;
+          if (w.status !== 'on_mission') return;
+          const covers = w.targetProvinceId === targetProv.id
+            || (w.assignedAirZoneId !== null && this.wingCoversProvince(state, w, targetProv.id));
+          if (!covers) return;
+          let atk = Fixed.ZERO;
+          let total = 0;
+          for (const [t, c] of Object.entries(w.aircraft)) {
+            if (t === 'cas' || t === 'tactical_bomber') {
+              atk = atk.add(Fixed.fromInt(c));
+              total += c;
+            }
+          }
+          if (total > 0) {
+            totalCAS = totalCAS.add(atk.div(Fixed.fromInt(100)).mul(w.organization).mul(w.strength));
+          }
+        });
+        if (totalCAS.greaterThan(Fixed.ZERO)) {
+          casMod = Fixed.ONE.add(totalCAS.min(Fixed.fromNumber(0.3)));
+        }
+
         let fortDef = BASE_DEFENSE;
         if (targetProv.fortLevel > 0) {
           fortDef = fortDef.add(FORT_DEFENSE_PER_LEVEL.mul(Fixed.fromInt(targetProv.fortLevel)));
         }
 
+        let supplyMod = SUPPLY_ATTACK_MOD_OK;
+        if (div.supplyStatus === 'low') supplyMod = SUPPLY_ATTACK_MOD_LOW;
+        else if (div.supplyStatus === 'critical') supplyMod = SUPPLY_ATTACK_MOD_CRITICAL;
+        else if (div.supplyStatus === 'none') supplyMod = SUPPLY_ATTACK_MOD_NONE;
+
         const dice01 = prng.next();
         const diceRoll = DICE_ROLL_LOW.add(DICE_ROLL_RANGE.mul(dice01));
-        const attackerRolled = attackerStats.mul(diceRoll);
+        const attackerRolled = attackerStats.mul(diceRoll).mul(supplyMod).mul(bombardMod).mul(casMod);
 
         if (attackerRolled.greaterThan(fortDef)) {
           const prevController = targetProv.controllerId;
@@ -136,17 +189,11 @@ export class DefaultCombatSystem implements CombatSystem {
             kind: 'provinceControlled',
             provinceId: targetProv.id,
             byCountryId: div.ownerId,
+            fromCountryId: prevController,
           });
 
           if (targetProv.VP > 0) {
             dispute.controlledVPs[div.ownerId] = (dispute.controlledVPs[div.ownerId] || 0) + targetProv.VP;
-            if (dispute.disputeResolve[prevController]) {
-              const loss = DISPUTE_RESOLVE_LOSS_PER_VP.mul(Fixed.fromInt(targetProv.VP));
-              dispute.disputeResolve[prevController] = dispute.disputeResolve[prevController].sub(loss);
-              if (dispute.disputeResolve[prevController].lessThan(Fixed.ZERO)) {
-                dispute.disputeResolve[prevController] = Fixed.ZERO;
-              }
-            }
           }
 
           div.currentProvinceId = div.targetProvinceId;
@@ -156,50 +203,17 @@ export class DefaultCombatSystem implements CombatSystem {
           div.strength = div.strength.sub(STRENGTH_LOSS_PER_DEFEAT).max(Fixed.ZERO);
           div.organization = div.organization.sub(ORG_LOSS_PER_DEFEAT).max(Fixed.ZERO);
           if (div.strength.lessOrEqual(Fixed.ZERO)) {
+            events.push({
+              kind: 'divisionDestroyed',
+              divisionId: div.id,
+              ownerId: div.ownerId,
+              provinceId: div.currentProvinceId,
+            });
             state.divisions.delete(div.id);
           }
         }
       }
-
-      for (const pid of dispute.participants) {
-        const resolve = dispute.disputeResolve[pid];
-        if (resolve && resolve.lessThan(DISPUTE_RESOLVE_SURRENDER)) {
-          const winnerId = dispute.participants.find((p) => p !== pid);
-          if (winnerId) {
-            resolvedDisputeIds.push(dispute.id);
-            events.push({
-              kind: 'disputeResolved',
-              disputeId: dispute.id,
-              winnerCountryId: winnerId,
-              loserCountryId: pid,
-            });
-          }
-          break;
-        }
-      }
     });
-
-    for (const disputeId of resolvedDisputeIds) {
-      const dispute = state.disputes.get(disputeId);
-      if (!dispute) continue;
-
-      state.divisions.forEach((div) => {
-        if (!dispute.participantSet.has(div.ownerId)) return;
-        if (div.inOffensive) {
-          div.inOffensive = false;
-          div.targetProvinceId = null;
-          if (div.status === 'fighting') {
-            div.status = 'ready';
-          }
-        }
-      });
-
-      for (const pid of dispute.participants) {
-        state.fronts.delete(pid);
-      }
-
-      state.disputes.delete(disputeId);
-    }
 
     return events;
   }
@@ -214,5 +228,11 @@ export class DefaultCombatSystem implements CombatSystem {
       state.seedMap[key] = seed;
     }
     return new PRNG(seed);
+  }
+
+  private wingCoversProvince(state: WorldState, w: { assignedAirZoneId: number | null }, provinceId: number): boolean {
+    if (w.assignedAirZoneId === null) return false;
+    const z = state.airZones.get(w.assignedAirZoneId);
+    return !!z && z.provinceIds.includes(provinceId);
   }
 }

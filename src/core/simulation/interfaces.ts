@@ -13,6 +13,7 @@ import {
   ResourceStockpile,
   ValidationResult,
   IdleAlertState,
+  WarLogEntry,
 } from '../state/world_state';
 import { BuildingType, ResourceType, DevelopmentPath } from '../types';
 import { GameEvent } from './types';
@@ -299,17 +300,23 @@ export interface ResearchSystem {
 }
 
 // ============================================================================
-// 师团系统（feature-combat-skeleton T1）
+// 师团系统（feature-combat-skeleton T1 + M2 师团模板）
 // ============================================================================
 
 export interface DivisionSystem {
   /**
-   * 招募师团
-   * - 校验政治点 >= 100、infantry_equipment >= 200、省份归属
+   * 招募师团（使用指定模板）
+   * - 校验政治点、装备、省份归属
    * - 扣资源、创建师团、加入 state.divisions
+   * @param templateId 模板 ID，不传则使用默认步兵模板
    * @returns 成功返回 true
    */
-  recruit(state: WorldState, countryId: string, provinceId: number): boolean;
+  recruit(state: WorldState, countryId: string, provinceId: number, templateId?: string): boolean;
+
+  /**
+   * 获取预设师团模板列表
+   */
+  getAvailableTemplates(state: WorldState, countryId: string): { id: string; name: string }[];
 
   /**
    * 推进师团训练 tick
@@ -317,6 +324,11 @@ export interface DivisionSystem {
    * @returns 本 tick 产生的事件
    */
   advanceTick(state: WorldState, countryId: string, dtMs: Fixed): GameEvent[];
+
+  /**
+   * 初始化默认师团模板（开局调用）
+   */
+  initDefaultTemplates(state: WorldState): void;
 }
 
 // ============================================================================
@@ -347,4 +359,126 @@ export interface CombatSystem {
    * @returns 本 tick 产生的事件（provinceControlled / disputeResolved）
    */
   advanceTick(state: WorldState, dtMs: Fixed): GameEvent[];
+}
+
+// ============================================================================
+// 投降系统（M1 feature-grand-war）
+// ============================================================================
+
+export interface SurrenderSystem {
+  initDisputeSurrender(state: WorldState, disputeId: string): void;
+  advanceTick(state: WorldState, dtMs: Fixed): GameEvent[];
+  addContribution(state: WorldState, disputeId: string, countryId: string, delta: Fixed, reason: string): void;
+  appendWarLog(state: WorldState, entry: Omit<WarLogEntry, 'tickId'>): void;
+  getSurrenderProgress(state: WorldState, disputeId: string, countryId: string): Fixed;
+  onProvinceControlled(state: WorldState, provinceId: number, byCountryId: string, loserId: string): void;
+  onDivisionDestroyed(state: WorldState, divisionId: number, ownerId: string, provinceId: number): void;
+  ensureWarLossesInitialized(state: WorldState, countryId: string): void;
+}
+
+export interface DiplomacySystem {
+  declareWar(state: WorldState, attackerId: string, defenderId: string, surrenderSys?: SurrenderSystem): GameEvent[];
+  offerPeace(state: WorldState, proposerId: string, targetId: string, surrenderSys?: SurrenderSystem): GameEvent[];
+  isAtWar(state: WorldState, countryA: string, countryB: string): boolean;
+}
+
+export interface SupplySystem {
+  advanceTick(state: WorldState, dtMs: Fixed): GameEvent[];
+  recalc(state: WorldState): void;
+  getDivisionSupplyModifier(state: WorldState, divisionId: number): Fixed;
+  canInitiateOffensive(state: WorldState, divisionId: number): boolean;
+  ensureSeaRoute(state: WorldState, countryId: string, toPortId: number): import('../state/world_state').SeaSupplyRoute | null;
+  setNavalSystem(n: NavalSystem): void;
+}
+
+/**
+ * 海军系统（M3）
+ */
+export interface NavalSystem {
+  initDefaultShipTemplates(state: WorldState): void;
+  initDefaultSeaZones(state: WorldState): void;
+  buildShip(state: WorldState, countryId: string, portProvinceId: number, templateId: string): number;
+  recruitFleet(state: WorldState, countryId: string, portProvinceId: number, composition: Record<string, number>, name: string): number;
+  createFleet(state: WorldState, countryId: string, name: string, homePortId: number, shipIds: number[]): number;
+  assignMission(state: WorldState, fleetId: number, mission: import('../state/world_state').FleetMission, seaZoneId?: number, targetProvinceId?: number): boolean;
+  recallToPort(state: WorldState, fleetId: number): void;
+  advanceTick(state: WorldState, dtMs: Fixed): GameEvent[];
+  getShoreBombardmentModifier(state: WorldState, provinceId: number, attackerCountryId: string): Fixed;
+  getSeaControl(state: WorldState, seaZoneId: number, countryId: string): Fixed;
+  getConvoyCount(state: WorldState, countryId: string): number;
+  consumeConvoys(state: WorldState, countryId: string, n: number): number;
+  refundConvoys(state: WorldState, countryId: string, n: number): void;
+  setSurrenderSystem(s: SurrenderSystem): void;
+  /** M4 空袭击沉舰船（海军系统内部处理击沉与事件）；返回被击沉的 shipId 列表 */
+  applyAirStrikeToZone(state: WorldState, seaZoneId: number, attackerCountryId: string, power: Fixed): number[];
+}
+
+/**
+ * 空军系统（M4）
+ */
+export interface AirSystem {
+  initDefaultAirZones(state: WorldState): void;
+  recruitWing(state: WorldState, countryId: string, baseProvinceId: number, aircraft: Record<string, number>, name: string): number;
+  assignMission(
+    state: WorldState, wingId: number, mission: import('../state/world_state').AirMission,
+    airZoneId?: number, targetProvinceId?: number, targetSeaZoneId?: number,
+  ): boolean;
+  recallToBase(state: WorldState, wingId: number): void;
+  advanceTick(state: WorldState, dtMs: Fixed): GameEvent[];
+  getAirSuperiority(state: WorldState, airZoneId: number, countryId: string): Fixed;
+  getCASModifier(state: WorldState, provinceId: number, attackerCountryId: string): Fixed;
+  setSurrenderSystem(s: SurrenderSystem): void;
+  setNavalSystem(n: NavalSystem): void;
+  setSupplySystem(s: SupplySystem): void;
+}
+
+/**
+ * 登陆作战系统（M5）
+ */
+export interface InvasionConditions {
+  fromPortOk: boolean;
+  toCoastalOk: boolean;
+  pathSeaControl: Fixed;
+  targetAirSuperiority: Fixed;
+  convoysAvailable: boolean;
+  escortFleetOk: boolean;
+  preparationReady: boolean;
+  allSatisfied: boolean;
+}
+
+export interface InvasionSystem {
+  /**
+   * 创建登陆计划
+   * @returns planId，失败返回 null
+   */
+  prepareInvasion(
+    state: WorldState,
+    ownerId: string,
+    fromProvinceId: number,
+    toProvinceId: number,
+    divisionIds: number[],
+    escortFleetIds: number[],
+    supportWingIds: number[],
+  ): string | null;
+  /**
+   * 发起登陆（ready 状态才能发起）
+   */
+  launchInvasion(state: WorldState, planId: string): boolean;
+  /**
+   * 取消登陆计划（preparing/ready 状态可取消，返还运输船）
+   */
+  cancelInvasion(state: WorldState, planId: string): void;
+  /**
+   * 查询登陆条件满足度
+   */
+  checkConditions(state: WorldState, planId: string): InvasionConditions;
+  /**
+   * 每 tick：推进准备进度、结算登陆战、登陆后补给压力
+   */
+  advanceTick(state: WorldState, dtMs: Fixed): GameEvent[];
+  setCombatSystem(c: CombatSystem): void;
+  setNavalSystem(n: NavalSystem): void;
+  setAirSystem(a: AirSystem): void;
+  setSupplySystem(s: SupplySystem): void;
+  setSurrenderSystem(s: SurrenderSystem): void;
 }

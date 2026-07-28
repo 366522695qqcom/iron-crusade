@@ -43,8 +43,28 @@ export type PlayerAction =
    * 二进制 kind 值仍为 0x0C，仅枚举名脱敏（附录 C.2.2）。
    */
   | { kind: 'initiateDispute'; targetCountryId: string }
-  | { kind: 'recruitDivision'; provinceId: number }
-  | { kind: 'joinFaction'; factionId: string };
+  | { kind: 'recruitDivision'; provinceId: number; templateId?: string }
+  | { kind: 'joinFaction'; factionId: string }
+  /** M1 feature-grand-war: 师团选择命令 */
+  | { kind: 'selectUnits'; unitIds: number[]; additive?: boolean }
+  | { kind: 'deselectUnits' }
+  | { kind: 'orderMove'; divisionIds: number[]; targetProvinceId: number }
+  | { kind: 'orderStop'; divisionIds: number[] }
+  | { kind: 'orderRetreat'; divisionIds: number[]; targetProvinceId: number }
+  | { kind: 'orderSplitDivision'; divisionId: number }
+  | { kind: 'orderMergeDivisions'; divisionIds: number[] }
+  /** M3 海军 */
+  | { kind: 'recruitFleet'; portProvinceId: number; composition: Record<string, number>; name: string }
+  | { kind: 'assignFleetMission'; fleetId: number; mission: import('../state/world_state').FleetMission; seaZoneId?: number; targetProvinceId?: number }
+  | { kind: 'recallFleet'; fleetId: number }
+  /** M4 空军 */
+  | { kind: 'recruitWing'; baseProvinceId: number; aircraft: Record<string, number>; name: string }
+  | { kind: 'assignWingMission'; wingId: number; mission: import('../state/world_state').AirMission; airZoneId?: number; targetProvinceId?: number; targetSeaZoneId?: number }
+  | { kind: 'recallWing'; wingId: number }
+  /** M5 登陆作战 */
+  | { kind: 'prepareInvasion'; fromProvinceId: number; toProvinceId: number; divisionIds: number[]; escortFleetIds: number[]; supportWingIds: number[] }
+  | { kind: 'launchInvasion'; planId: string }
+  | { kind: 'cancelInvasion'; planId: string };
 
 /**
  * 游戏事件联合类型（技术设计文档 4.4）
@@ -87,11 +107,83 @@ export type GameEvent =
    */
   | { kind: 'divisionRecruited'; divisionId: number; provinceId: number }
   /**
+   * 师团被歼灭（M1 feature-grand-war）
+   */
+  | { kind: 'divisionDestroyed'; divisionId: number; ownerId: string; provinceId: number }
+  /**
    * 争端结算（S.2 脱敏：原 combatResolved 战斗结算）
    */
   | { kind: 'disputeResolved'; disputeId: string; winnerCountryId: string; loserCountryId: string }
   /**
    * 省份被管控（S.2 脱敏：原 provinceOccupied 占领）
    */
-  | { kind: 'provinceControlled'; provinceId: number; byCountryId: string }
+  | { kind: 'provinceControlled'; provinceId: number; byCountryId: string; fromCountryId: string }
+  /**
+   * 国家投降（M1 feature-grand-war）
+   */
+  | { kind: 'surrendered'; countryId: string; disputeId: string }
+  /**
+   * 战争开始（M2 外交系统）
+   */
+  | { kind: 'warStarted'; countryId: string; disputeId: string; tickId: number; relatedIds: { attackerId: string; defenderId: string } }
+  /**
+   * 和谈达成（M2 外交系统）
+   */
+  | { kind: 'peaceTreaty'; countryId: string; disputeId: string; tickId: number; relatedIds: { proposerId: string; targetId: string } }
+  /**
+   * 补给危机（M2 补给系统：大量师团断补）
+   */
+  | { kind: 'supplyCrisis'; countryId: string; divisionsOutOfSupply: number }
+  /**
+   * 舰队创建（M3）
+   */
+  | { kind: 'fleetCreated'; fleetId: number; ownerId: string }
+  /**
+   * 海战发生（M3）
+   */
+  | { kind: 'navalBattle'; seaZoneId: number; attackerCountryId: string; defenderCountryId: string; attackerShipsLost: number; defenderShipsLost: number }
+  /**
+   * 舰船被击沉（M3）
+   */
+  | { kind: 'shipSunk'; shipId: number; ownerId: string; seaZoneId: number }
+  /**
+   * 岸轰支援（M3）
+   */
+  | { kind: 'shoreBombardment'; fleetId: number; provinceId: number; bombardStrength: Fixed }
+  /**
+   * 运输船被击沉（M3）
+   */
+  | { kind: 'convoySunk'; countryId: string; count: number; seaZoneId: number }
+  /**
+   * 联队创建（M4）
+   */
+  | { kind: 'wingCreated'; wingId: number; ownerId: string }
+  /**
+   * 空战发生（M4）
+   */
+  | { kind: 'airBattle'; airZoneId: number; attackerCountryId: string; defenderCountryId: string; attackerAircraftLost: number; defenderAircraftLost: number }
+  /**
+   * 飞机损失（M4）
+   */
+  | { kind: 'aircraftLost'; wingId: number; ownerId: string; aircraftType: string; count: number; airZoneId: number }
+  /**
+   * 港口被轰炸（M4）
+   */
+  | { kind: 'portStruck'; provinceId: number; attackerCountryId: string }
+  /**
+   * CAS 支援（M4）
+   */
+  | { kind: 'casSupport'; wingId: number; provinceId: number; supportStrength: Fixed }
+  /**
+   * 对海打击（M4）
+   */
+  | { kind: 'navalStrike'; wingId: number; seaZoneId: number; shipsSunk: number }
+  /**
+   * M5 登陆作战
+   */
+  | { kind: 'invasionPrepared'; planId: string; ownerId: string; fromProvinceId: number; toProvinceId: number }
+  | { kind: 'invasionLaunched'; planId: string; ownerId: string }
+  | { kind: 'invasionRepelled'; planId: string; ownerId: string; divisionsLost: number; convoysLost: number }
+  | { kind: 'invasionSuccess'; planId: string; ownerId: string; provinceId: number }
+  | { kind: 'invasionCancelled'; planId: string; ownerId: string }
   | { kind: 'hashMismatch'; frameId: number; expected: string; actual: string };

@@ -31,10 +31,26 @@ import {
   ProductionTask,
   EquipmentPool,
   Division,
+  DivisionTemplate,
   FocusTreeState,
   ResearchState,
   Dispute,
   Front,
+  CountryWarLosses,
+  WarLogEntry,
+  SupplyNetwork,
+  ProvinceSupply,
+  SeaSupplyRoute,
+  ShipTemplate,
+  Ship,
+  Fleet,
+  SeaZone,
+  SeaControlState,
+  ConvoyRoute,
+  AirZone,
+  AirWing,
+  AirSuperiorityState,
+  InvasionPlan,
 } from '../state/world_state';
 import { StateManager, WorldDiff, StatePatch } from './interfaces';
 
@@ -76,13 +92,29 @@ export class DefaultStateManager implements StateManager {
       productionTasks: cloneSortedMap(s.productionTasks, cloneProductionTask),
       equipmentPools: cloneSortedMap(s.equipmentPools, cloneEquipmentPool),
       divisions: cloneSortedMap(s.divisions, cloneDivision),
+      divisionTemplates: cloneSortedMap(s.divisionTemplates, cloneDivisionTemplate),
+      supplyNetwork: cloneSupplyNetwork(s.supplyNetwork),
       focusTrees: cloneSortedMap(s.focusTrees, cloneFocusTreeState),
       research: cloneSortedMap(s.research, cloneResearchState),
       disputes: cloneSortedMap(s.disputes, cloneDispute),
       fronts: cloneSortedMap(s.fronts, cloneFrontArray),
+      warLosses: cloneSortedMap(s.warLosses, cloneWarLosses),
+      warLog: s.warLog.map(cloneWarLogEntry),
+      selectedUnitIds: s.selectedUnitIds.slice(),
 
       nextEntityId: s.nextEntityId,
       seedMap: cloneSeedMap(s.seedMap),
+      gameOver: s.gameOver ? { ...s.gameOver } : null,
+      shipTemplates: cloneSortedMap(s.shipTemplates, cloneShipTemplate),
+      ships: cloneSortedMap(s.ships, cloneShip),
+      fleets: cloneSortedMap(s.fleets, cloneFleet),
+      seaZones: cloneSortedMap(s.seaZones, cloneSeaZone),
+      seaControl: cloneSortedMap(s.seaControl, cloneSeaControlState),
+      convoyRoutes: s.convoyRoutes.map(cloneConvoyRoute),
+      airZones: cloneSortedMap(s.airZones, cloneAirZone),
+      wings: cloneSortedMap(s.wings, cloneWing),
+      airSuperiority: cloneSortedMap(s.airSuperiority, cloneAirSuperiorityState),
+      invasions: cloneSortedMap(s.invasions, cloneInvasionPlan),
     };
   }
 
@@ -234,11 +266,15 @@ function cloneProvince(p: Province): Province {
     name: p.name,
     terrain: p.terrain,
     isCoastal: p.isCoastal,
+    adjacentProvinceIds: p.adjacentProvinceIds.slice(),
     infrastructure: p.infrastructure,
     buildingSlots: p.buildingSlots,
     combatWidth: p.combatWidth,
     supplyHubLevel: p.supplyHubLevel,
     fortLevel: p.fortLevel,
+    portLevel: p.portLevel,
+    airBaseLevel: p.airBaseLevel,
+    adjacentSeaZoneIds: p.adjacentSeaZoneIds.slice(),
     VP: p.VP,
   };
 }
@@ -356,6 +392,7 @@ function cloneDivision(d: Division): Division {
   return {
     id: d.id,
     ownerId: d.ownerId,
+    templateId: d.templateId,
     template: d.template.map((slot) => ({ slot: slot.slot, equipmentType: slot.equipmentType })),
     organization: d.organization,
     hardness: d.hardness,
@@ -364,10 +401,194 @@ function cloneDivision(d: Division): Division {
     currentProvinceId: d.currentProvinceId,
     targetProvinceId: d.targetProvinceId,
     supply: d.supply,
+    supplyStatus: d.supplyStatus,
     strength: d.strength,
     trainingProgress: d.trainingProgress,
     status: d.status,
     inOffensive: d.inOffensive,
+  };
+}
+
+function cloneDivisionTemplate(t: DivisionTemplate): DivisionTemplate {
+  return {
+    id: t.id,
+    name: t.name,
+    slots: t.slots.map(s => ({ slot: s.slot, equipmentType: s.equipmentType })),
+    organization: t.organization,
+    hardness: t.hardness,
+    softAttack: t.softAttack,
+    hardAttack: t.hardAttack,
+    politicalCost: t.politicalCost,
+    equipmentCost: { ...t.equipmentCost },
+    trainingTicks: t.trainingTicks,
+  };
+}
+
+function cloneProvinceSupply(ps: ProvinceSupply): ProvinceSupply {
+  return {
+    provinceId: ps.provinceId,
+    level: ps.level,
+    demand: ps.demand,
+    received: ps.received,
+    viaPort: ps.viaPort,
+    bombedUntilTick: ps.bombedUntilTick,
+  };
+}
+
+function cloneSeaSupplyRoute(r: SeaSupplyRoute): SeaSupplyRoute {
+  return {
+    id: r.id,
+    ownerId: r.ownerId,
+    fromPortId: r.fromPortId,
+    toPortId: r.toPortId,
+    pathSeaZoneIds: r.pathSeaZoneIds.slice(),
+    convoysAssigned: r.convoysAssigned,
+    efficiency: r.efficiency,
+    escortFleetIds: r.escortFleetIds.slice(),
+  };
+}
+
+function cloneSupplyNetwork(net: SupplyNetwork): SupplyNetwork {
+  return {
+    provinceSupply: cloneSortedMap(net.provinceSupply, cloneProvinceSupply),
+    seaSupplyRoutes: net.seaSupplyRoutes.map(cloneSeaSupplyRoute),
+    lastRecalcTick: net.lastRecalcTick,
+  };
+}
+
+function cloneShipTemplate(t: ShipTemplate): ShipTemplate {
+  return {
+    id: t.id,
+    name: t.name,
+    type: t.type,
+    hp: t.hp,
+    navalAttack: t.navalAttack,
+    subAttack: t.subAttack,
+    antiSub: t.antiSub,
+    shoreBombardment: t.shoreBombardment,
+    antiAir: t.antiAir,
+    armor: t.armor,
+    speed: t.speed,
+    steelCost: t.steelCost,
+    buildTicks: t.buildTicks,
+  };
+}
+
+function cloneShip(s: Ship): Ship {
+  return {
+    id: s.id,
+    ownerId: s.ownerId,
+    templateId: s.templateId,
+    type: s.type,
+    hp: s.hp,
+    maxHp: s.maxHp,
+    navalAttack: s.navalAttack,
+    subAttack: s.subAttack,
+    antiSub: s.antiSub,
+    shoreBombardment: s.shoreBombardment,
+    antiAir: s.antiAir,
+    armor: s.armor,
+    speed: s.speed,
+    fleetId: s.fleetId,
+  };
+}
+
+function cloneFleet(f: Fleet): Fleet {
+  return {
+    id: f.id,
+    ownerId: f.ownerId,
+    name: f.name,
+    homePortId: f.homePortId,
+    status: f.status,
+    organization: f.organization,
+    strength: f.strength,
+    trainingProgress: f.trainingProgress,
+    mission: f.mission,
+    assignedSeaZoneId: f.assignedSeaZoneId,
+    bombardTargetProvinceId: f.bombardTargetProvinceId,
+    shipIds: f.shipIds.slice(),
+  };
+}
+
+function cloneSeaZone(sz: SeaZone): SeaZone {
+  return {
+    id: sz.id,
+    name: sz.name,
+    adjacentProvinceIds: sz.adjacentProvinceIds.slice(),
+    adjacentSeaZoneIds: sz.adjacentSeaZoneIds.slice(),
+  };
+}
+
+function cloneSeaControlState(sc: SeaControlState): SeaControlState {
+  return {
+    seaZoneId: sc.seaZoneId,
+    control: sc.control.map((c) => ({ countryId: c.countryId, ratio: c.ratio })),
+  };
+}
+
+function cloneConvoyRoute(r: ConvoyRoute): ConvoyRoute {
+  return {
+    id: r.id,
+    countryId: r.countryId,
+    fromProvinceId: r.fromProvinceId,
+    toProvinceId: r.toProvinceId,
+    seaZoneIds: r.seaZoneIds.slice(),
+    escortFleetId: r.escortFleetId,
+    supplyFlow: r.supplyFlow,
+    convoyCount: r.convoyCount,
+  };
+}
+
+function cloneAirZone(z: AirZone): AirZone {
+  return {
+    id: z.id,
+    name: z.name,
+    provinceIds: z.provinceIds.slice(),
+    seaZoneIds: z.seaZoneIds.slice(),
+  };
+}
+
+function cloneWing(w: AirWing): AirWing {
+  return {
+    id: w.id,
+    ownerId: w.ownerId,
+    name: w.name,
+    aircraft: { ...w.aircraft },
+    organization: w.organization,
+    strength: w.strength,
+    trainingProgress: w.trainingProgress,
+    status: w.status,
+    homeBaseId: w.homeBaseId,
+    carrierFleetId: w.carrierFleetId,
+    mission: w.mission,
+    assignedAirZoneId: w.assignedAirZoneId,
+    targetProvinceId: w.targetProvinceId,
+    targetSeaZoneId: w.targetSeaZoneId,
+  };
+}
+
+function cloneAirSuperiorityState(s: AirSuperiorityState): AirSuperiorityState {
+  return {
+    airZoneId: s.airZoneId,
+    control: s.control.map((c) => ({ countryId: c.countryId, ratio: c.ratio })),
+  };
+}
+
+function cloneInvasionPlan(p: InvasionPlan): InvasionPlan {
+  return {
+    id: p.id,
+    ownerId: p.ownerId,
+    fromProvinceId: p.fromProvinceId,
+    toProvinceId: p.toProvinceId,
+    divisionIds: p.divisionIds.slice(),
+    requiredConvoys: p.requiredConvoys,
+    preparationProgress: p.preparationProgress,
+    status: p.status,
+    escortFleetIds: p.escortFleetIds.slice(),
+    supportWingIds: p.supportWingIds.slice(),
+    launchedTick: p.launchedTick,
+    pathSeaZoneIds: p.pathSeaZoneIds.slice(),
+    targetAirZoneId: p.targetAirZoneId,
   };
 }
 
@@ -421,6 +642,21 @@ function cloneDispute(d: Dispute): Dispute {
     controlledVPs[k] = d.controlledVPs[k];
   }
 
+  const surrenderProgress: Record<string, Fixed> = {};
+  const surrenderThreshold: Record<string, Fixed> = {};
+  if (d.surrenderProgress) {
+    const surrenderKeys = Object.keys(d.surrenderProgress).sort();
+    for (const k of surrenderKeys) {
+      surrenderProgress[k] = d.surrenderProgress[k];
+    }
+  }
+  if (d.surrenderThreshold) {
+    const thresholdKeys = Object.keys(d.surrenderThreshold).sort();
+    for (const k of thresholdKeys) {
+      surrenderThreshold[k] = d.surrenderThreshold[k];
+    }
+  }
+
   return {
     id: d.id,
     participants: d.participants.slice(),
@@ -428,6 +664,33 @@ function cloneDispute(d: Dispute): Dispute {
     disputeResolve,
     disputeGoals: d.disputeGoals.slice(),
     controlledVPs,
+    surrenderProgress,
+    surrenderThreshold,
+    startTick: d.startTick || 0,
+    totalVPs: d.totalVPs || 0,
+  };
+}
+
+function cloneWarLosses(w: CountryWarLosses): CountryWarLosses {
+  return {
+    countryId: w.countryId,
+    divisionsLost: w.divisionsLost,
+    shipsLost: { ...w.shipsLost },
+    aircraftLost: { ...w.aircraftLost },
+    convoysLost: w.convoysLost,
+    provincesLost: w.provincesLost,
+    majorCitiesLost: w.majorCitiesLost,
+    capitalLost: w.capitalLost,
+  };
+}
+
+function cloneWarLogEntry(e: WarLogEntry): WarLogEntry {
+  return {
+    tickId: e.tickId,
+    kind: e.kind,
+    countryId: e.countryId,
+    text: e.text,
+    relatedIds: e.relatedIds ? { ...e.relatedIds } : undefined,
   };
 }
 

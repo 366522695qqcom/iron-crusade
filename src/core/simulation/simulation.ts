@@ -1,8 +1,8 @@
 /**
- * Simulation 主循环实现（spec implement-core-simulation T6）
+ * Simulation 主循环实现（spec implement-core-simulation T6 + M1）
  *
  * 固定 tick 100ms×speed，应用玩家输入→资源/建筑/工厂 advanceTick→收集事件→每16帧算哈希；
- * 焦点/科研/战斗/dispute 推进不在本范围（由后续系统 spec 处理）。
+ * 焦点/科研/战斗/dispute/投降 推进集成。
  *
  * 实现约定：
  * - 不 import cc，core/ 层独立
@@ -14,7 +14,7 @@
 import type { Simulation, TickResult } from './index';
 import { Fixed } from '../determinism/fixed';
 import { hashWorld } from '../state/hash';
-import { WorldState, ResourceStockpile } from '../state/world_state';
+import { WorldState, ResourceStockpile, Division } from '../state/world_state';
 import { ResourceType } from '../types';
 import { PlayerAction, GameEvent } from './types';
 import {
@@ -26,6 +26,12 @@ import {
   ResearchSystem,
   DivisionSystem,
   CombatSystem,
+  SurrenderSystem,
+  DiplomacySystem,
+  SupplySystem,
+  NavalSystem,
+  AirSystem,
+  InvasionSystem,
 } from './interfaces';
 import { DefaultStateManager } from './state_manager';
 import { DefaultResourceSystem } from './resource_system';
@@ -35,6 +41,12 @@ import { DefaultFocusSystem } from './focus_system';
 import { DefaultResearchSystem } from './research_system';
 import { DefaultDivisionSystem } from './division_system';
 import { DefaultCombatSystem } from './combat_system';
+import { DefaultSurrenderSystem } from './surrender_system';
+import { DefaultDiplomacySystem } from './diplomacy_system';
+import { DefaultSupplySystem } from './supply_system';
+import { DefaultNavalSystem } from './naval_system';
+import { DefaultAirSystem } from './air_system';
+import { DefaultInvasionSystem } from './invasion_system';
 
 const FIXED_100 = Fixed.fromInt(100);
 const FIXED_864000 = Fixed.fromInt(864000);
@@ -68,7 +80,7 @@ type StateManagerWithState = StateManager & { getState(): WorldState };
 /**
  * 默认 Simulation 实现
  *
- * 串联 ResourceSystem / BuildingSystem / FactorySystem + StateManager，
+ * 串联 ResourceSystem / BuildingSystem / FactorySystem / CombatSystem / SurrenderSystem + StateManager，
  * 固定 tick 推演主循环。提供静态工厂 create() 一行创建，也可直接构造注入自定义实现。
  */
 export class DefaultSimulation implements Simulation {
@@ -86,7 +98,24 @@ export class DefaultSimulation implements Simulation {
     private researchSystem: ResearchSystem,
     private divisionSystem: DivisionSystem,
     private combatSystem: CombatSystem | null,
-  ) {}
+    private surrenderSystem: SurrenderSystem,
+    private diplomacySystem: DiplomacySystem = new DefaultDiplomacySystem(),
+    private supplySystem: SupplySystem = new DefaultSupplySystem(),
+    private navalSystem: NavalSystem = new DefaultNavalSystem(),
+    private airSystem: AirSystem = new DefaultAirSystem(),
+    private invasionSystem: InvasionSystem = new DefaultInvasionSystem(),
+  ) {
+    this.navalSystem.setSurrenderSystem(this.surrenderSystem);
+    this.supplySystem.setNavalSystem(this.navalSystem);
+    this.airSystem.setSurrenderSystem(this.surrenderSystem);
+    this.airSystem.setNavalSystem(this.navalSystem);
+    this.airSystem.setSupplySystem(this.supplySystem);
+    this.invasionSystem.setCombatSystem(this.combatSystem || new DefaultCombatSystem());
+    this.invasionSystem.setNavalSystem(this.navalSystem);
+    this.invasionSystem.setAirSystem(this.airSystem);
+    this.invasionSystem.setSupplySystem(this.supplySystem);
+    this.invasionSystem.setSurrenderSystem(this.surrenderSystem);
+  }
 
   /**
    * 静态工厂：用默认子系统实现创建 Simulation。
@@ -101,13 +130,30 @@ export class DefaultSimulation implements Simulation {
     const researchSys = new DefaultResearchSystem();
     const divSys = new DefaultDivisionSystem();
     const combatSys = new DefaultCombatSystem();
-    const sim = new DefaultSimulation(sm, rs, bs, fs, focusSys, researchSys, divSys, combatSys);
-    // 从 state.countries 找 isPlayer === true 的国家作为玩家国家
+    const surrenderSys = new DefaultSurrenderSystem();
+    const supplySys = new DefaultSupplySystem();
+    const navalSys = new DefaultNavalSystem();
+    const airSys = new DefaultAirSystem();
+    const invasionSys = new DefaultInvasionSystem();
+    const sim = new DefaultSimulation(sm, rs, bs, fs, focusSys, researchSys, divSys, combatSys, surrenderSys, new DefaultDiplomacySystem(), supplySys, navalSys, airSys, invasionSys);
     state.countries.forEach((c) => {
       if (c.isPlayer && sim.playerCountryId === '') {
         sim.playerCountryId = c.id;
       }
     });
+    state.countries.forEach((c) => {
+      surrenderSys.ensureWarLossesInitialized(state, c.id);
+    });
+    divSys.initDefaultTemplates(state);
+    navalSys.initDefaultShipTemplates(state);
+    navalSys.initDefaultSeaZones(state);
+    airSys.initDefaultAirZones(state);
+    invasionSys.setCombatSystem(combatSys);
+    invasionSys.setNavalSystem(navalSys);
+    invasionSys.setAirSystem(airSys);
+    invasionSys.setSupplySystem(supplySys);
+    invasionSys.setSurrenderSystem(surrenderSys);
+    supplySys.recalc(state);
     return sim;
   }
 
@@ -126,34 +172,32 @@ export class DefaultSimulation implements Simulation {
    *
    * 流程：
    * 1. 取当前 state
-   * 2. 按数组顺序应用玩家输入（setSpeed / placeBuilding / cancelBuilding /
-   *    assignFactory / unassignFactory / reorderConstruction / trade；其余 action noop）
+   * 2. 按数组顺序应用玩家输入
    * 3. 若 speed > 0：计算 dtMs = 100ms × speed，tickId++，tickElapsed += dtMs，
    *    遍历所有国家执行 resourceSystem.yieldTick → buildingSystem.advanceTick → factorySystem.produceTick
-   * 4. 收集事件：建筑完成（id > prevMaxBuildingId）、工厂空闲（scanIdle level>=1）
-   * 5. 每 16 帧（或首次 lastHash===''）算一次 hashWorld(state)
-   * 6. 返回 { frameId, events, hash }
+   * 4. 战斗系统推进，收集战斗事件
+   * 5. 投降系统推进，处理投降事件
+   * 6. 收集事件：建筑完成、工厂空闲
+   * 7. 每 16 帧（或首次 lastHash===''）算一次 hashWorld(state)
+   * 8. 返回 { frameId, events, hash }
    */
   tick(frameId: number, inputs: PlayerAction[]): TickResult {
     const state = this.stateManager.getState();
     const events: GameEvent[] = [];
 
-    // 1. 应用玩家输入（按数组顺序，保证联机一致）
     for (const action of inputs) {
-      this.applyAction(state, action);
+      const actionEvents = this.applyAction(state, action);
+      for (const ev of actionEvents) events.push(ev);
     }
 
-    // 2. 系统推进（仅当非暂停）
     if (state.speed > 0) {
       const dtMs = SPEED_DT_MS[state.speed];
       state.tickId += 1;
       state.tickElapsed = state.tickElapsed.add(dtMs);
 
-      // 记录推进前的 nextEntityId，用于检测本帧新增建筑（id >= prevNextEntityId 即新增）
       const prevNextEntityId = state.nextEntityId;
       const politicalRate = POLITICAL_RATE_PER_SPEED[state.speed];
 
-      // 合并 6 次国家遍历为单次：资源→建筑→工厂→焦点→科研→政治点→师团
       state.countries.forEach((c) => {
         this.resourceSystem.yieldTick(state, c.id, dtMs);
         this.buildingSystem.advanceTick(state, c.id, dtMs);
@@ -170,7 +214,6 @@ export class DefaultSimulation implements Simulation {
         const divEvents = this.divisionSystem.advanceTick(state, c.id, dtMs);
         for (const ev of divEvents) events.push(ev);
 
-        // 政治点每日产出：baseRate × rate（rate 预计算 = speed*100/86400000）
         const stockpile = state.stockpiles.get(c.id);
         if (stockpile) {
           const baseRate = this.focusSystem.getPoliticalPowerPerDay(c.id);
@@ -183,16 +226,38 @@ export class DefaultSimulation implements Simulation {
         }
       });
 
-      // 战斗系统独立推进（不按国家遍历）
+      this.advanceDivisionMovement(state, dtMs);
+
+      const supplyEvents = this.supplySystem.advanceTick(state, dtMs);
+      for (const ev of supplyEvents) events.push(ev);
+
+      const navalEvents = this.navalSystem.advanceTick(state, dtMs);
+      for (const ev of navalEvents) events.push(ev);
+
+      const airEvents = this.airSystem.advanceTick(state, dtMs);
+      for (const ev of airEvents) events.push(ev);
+
+      const invasionEvents = this.invasionSystem.advanceTick(state, dtMs);
+      for (const ev of invasionEvents) events.push(ev);
+
       if (this.combatSystem) {
         const combatEvents = this.combatSystem.advanceTick(state, dtMs);
-        for (const ev of combatEvents) events.push(ev);
+        for (const ev of combatEvents) {
+          events.push(ev);
+          if (ev.kind === 'provinceControlled') {
+            this.surrenderSystem.onProvinceControlled(state, ev.provinceId, ev.byCountryId, ev.fromCountryId);
+            this.supplySystem.recalc(state);
+          } else if (ev.kind === 'divisionDestroyed') {
+            this.surrenderSystem.onDivisionDestroyed(state, ev.divisionId, ev.ownerId, ev.provinceId);
+          }
+        }
       }
 
-      // 3. 收集事件
+      const surrenderEvents = this.surrenderSystem.advanceTick(state, dtMs);
+      for (const ev of surrenderEvents) events.push(ev);
 
-      // 建筑完成事件：仅当本 tick 有新增建筑时才遍历（id 单调递增）
       if (state.nextEntityId > prevNextEntityId) {
+        let needSupplyRecalc = false;
         state.buildings.forEach((b) => {
           if (b.id >= prevNextEntityId) {
             events.push({
@@ -200,11 +265,26 @@ export class DefaultSimulation implements Simulation {
               buildingId: b.id,
               provinceId: b.provinceId,
             });
+            const prov = state.provinces.get(b.provinceId);
+            if (prov) {
+              if (b.type === 'dockyard' && prov.portLevel < 1) {
+                prov.portLevel = 1;
+                needSupplyRecalc = true;
+              } else if (b.type === 'supply_hub' && prov.supplyHubLevel < 1) {
+                prov.supplyHubLevel = 1;
+                needSupplyRecalc = true;
+              } else if (b.type === 'air_base') {
+                prov.airBaseLevel = Math.min(10, prov.airBaseLevel + 1);
+              }
+              state.provinces.set(b.provinceId, prov);
+            }
           }
         });
+        if (needSupplyRecalc) {
+          this.supplySystem.recalc(state);
+        }
       }
 
-      // 工厂空闲事件：scanIdle 已遍历该国工厂，复用其结果直接取第一个空闲工厂
       if (this.playerCountryId !== '') {
         const idleAlert = this.factorySystem.scanIdle(state, this.playerCountryId);
         if (idleAlert.level >= 1 && idleAlert.idleFactoryCount > 0 && idleAlert.firstIdleFactoryId > 0) {
@@ -217,7 +297,6 @@ export class DefaultSimulation implements Simulation {
       }
     }
 
-    // 4. 哈希：每 16 帧算一次，首次（lastHash === ''）也算
     if (frameId % 16 === 0 || this.lastHash === '') {
       this.lastHash = hashWorld(state);
     }
@@ -226,20 +305,71 @@ export class DefaultSimulation implements Simulation {
   }
 
   /**
-   * 应用单个玩家动作到 state
-   *
-   * 按动作 kind 分发到对应子系统。本 spec 范围外的 action（drawFront /
-   * issueOffensive / initiateDispute / joinFaction）走 default 分支 noop，
-   * 由后续系统 spec 处理。
+   * 推进师团移动（M1简化版：相邻省份瞬移，不考虑移动时间）
    */
-  private applyAction(state: WorldState, action: PlayerAction): void {
+  private advanceDivisionMovement(state: WorldState, _dtMs: Fixed): void {
+    const MOVE_TICKS_PER_PROVINCE = 5;
+    state.divisions.forEach((div) => {
+      if (div.status !== 'moving' && div.status !== 'retreating') return;
+      if (div.targetProvinceId === null) {
+        div.status = 'ready';
+        return;
+      }
+      const targetProv = state.provinces.get(div.targetProvinceId);
+      const curProv = state.provinces.get(div.currentProvinceId);
+      if (!targetProv || !curProv) {
+        div.status = 'ready';
+        div.targetProvinceId = null;
+        return;
+      }
+
+      if (state.tickId % MOVE_TICKS_PER_PROVINCE !== 0) return;
+
+      if (div.status === 'moving') {
+        if (targetProv.controllerId === div.ownerId && curProv.adjacentProvinceIds.includes(div.targetProvinceId)) {
+          div.currentProvinceId = div.targetProvinceId;
+          div.status = 'ready';
+          div.targetProvinceId = null;
+        } else {
+          div.status = 'ready';
+          div.targetProvinceId = null;
+        }
+      } else if (div.status === 'retreating') {
+        if (targetProv.controllerId === div.ownerId && curProv.adjacentProvinceIds.includes(div.targetProvinceId)) {
+          div.currentProvinceId = div.targetProvinceId;
+          div.status = 'ready';
+          div.targetProvinceId = null;
+        } else {
+          let foundRetreat = false;
+          for (const adjId of curProv.adjacentProvinceIds) {
+            const adjProv = state.provinces.get(adjId);
+            if (adjProv && adjProv.controllerId === div.ownerId) {
+              div.currentProvinceId = adjId;
+              foundRetreat = true;
+              break;
+            }
+          }
+          if (!foundRetreat) {
+            div.status = 'ready';
+          }
+          div.targetProvinceId = null;
+        }
+      }
+    });
+  }
+
+  /**
+   * 应用单个玩家动作到 state
+   * @returns 该动作产生的事件列表
+   */
+  private applyAction(state: WorldState, action: PlayerAction): GameEvent[] {
+    let actionEvents: GameEvent[] = [];
     switch (action.kind) {
       case 'setSpeed':
         state.speed = action.speed;
         break;
 
       case 'placeBuilding':
-        // priority 默认 0（后续由 reorderConstruction 调整）
         this.buildingSystem.enqueue(state, this.playerCountryId, {
           type: action.type,
           provinceId: action.provinceId,
@@ -296,19 +426,84 @@ export class DefaultSimulation implements Simulation {
         break;
 
       case 'pickResearch':
-        // M1 简化：slot 取第一个空闲槽（0 或 1），默认用 0
         this.researchSystem.assignSlot(state, this.playerCountryId, action.lineId, 0);
         break;
 
       case 'recruitDivision':
-        this.divisionSystem.recruit(state, this.playerCountryId, action.provinceId);
+        this.divisionSystem.recruit(state, this.playerCountryId, action.provinceId, action.templateId);
         break;
 
-      case 'initiateDispute':
-        if (this.combatSystem) {
-          this.combatSystem.initiateDispute(state, this.playerCountryId, action.targetCountryId);
+      case 'recruitFleet':
+        this.navalSystem.recruitFleet(state, this.playerCountryId, action.portProvinceId, action.composition, action.name);
+        break;
+      case 'assignFleetMission':
+        this.navalSystem.assignMission(state, action.fleetId, action.mission, action.seaZoneId, action.targetProvinceId);
+        break;
+      case 'recallFleet':
+        this.navalSystem.recallToPort(state, action.fleetId);
+        break;
+
+      case 'recruitWing':
+        this.airSystem.recruitWing(state, this.playerCountryId, action.baseProvinceId, action.aircraft, action.name);
+        break;
+      case 'assignWingMission':
+        this.airSystem.assignMission(state, action.wingId, action.mission, action.airZoneId, action.targetProvinceId, action.targetSeaZoneId);
+        break;
+      case 'recallWing':
+        this.airSystem.recallToBase(state, action.wingId);
+        break;
+
+      case 'prepareInvasion': {
+        const planId = this.invasionSystem.prepareInvasion(
+          state, this.playerCountryId,
+          action.fromProvinceId, action.toProvinceId,
+          action.divisionIds, action.escortFleetIds, action.supportWingIds,
+        );
+        if (planId) {
+          actionEvents.push({
+            kind: 'invasionPrepared',
+            planId,
+            ownerId: this.playerCountryId,
+            fromProvinceId: action.fromProvinceId,
+            toProvinceId: action.toProvinceId,
+          });
         }
         break;
+      }
+      case 'launchInvasion': {
+        const ok = this.invasionSystem.launchInvasion(state, action.planId);
+        if (ok) {
+          actionEvents.push({
+            kind: 'invasionLaunched',
+            planId: action.planId,
+            ownerId: this.playerCountryId,
+          });
+        }
+        break;
+      }
+      case 'cancelInvasion': {
+        const plan = state.invasions.get(action.planId);
+        this.invasionSystem.cancelInvasion(state, action.planId);
+        if (plan && plan.ownerId === this.playerCountryId) {
+          actionEvents.push({
+            kind: 'invasionCancelled',
+            planId: action.planId,
+            ownerId: this.playerCountryId,
+          });
+        }
+        break;
+      }
+
+      case 'initiateDispute': {
+        const dipEvents = this.diplomacySystem.declareWar(
+          state,
+          this.playerCountryId,
+          action.targetCountryId,
+          this.surrenderSystem
+        );
+        actionEvents = dipEvents;
+        break;
+      }
 
       case 'drawFront':
         if (this.combatSystem) {
@@ -322,10 +517,137 @@ export class DefaultSimulation implements Simulation {
         }
         break;
 
+      case 'selectUnits': {
+        if (action.additive) {
+          const set = new Set(state.selectedUnitIds);
+          for (const id of action.unitIds) {
+            if (state.divisions.has(id)) {
+              set.add(id);
+            }
+          }
+          state.selectedUnitIds = Array.from(set);
+        } else {
+          const valid = action.unitIds.filter(id => state.divisions.has(id));
+          state.selectedUnitIds = valid.slice();
+        }
+        break;
+      }
+
+      case 'deselectUnits':
+        state.selectedUnitIds = [];
+        break;
+
+      case 'orderMove': {
+        for (const divId of action.divisionIds) {
+          const div = state.divisions.get(divId);
+          if (!div || div.ownerId !== this.playerCountryId) continue;
+          if (div.status === 'fighting' || div.status === 'training' || div.status === 'landing') continue;
+          const targetProv = state.provinces.get(action.targetProvinceId);
+          const curProv = state.provinces.get(div.currentProvinceId);
+          if (!targetProv || !curProv) continue;
+          if (!curProv.adjacentProvinceIds.includes(action.targetProvinceId)) continue;
+          if (targetProv.controllerId === this.playerCountryId) {
+            div.status = 'moving';
+            div.inOffensive = false;
+            div.targetProvinceId = action.targetProvinceId;
+          } else {
+            if (this.combatSystem) {
+              this.combatSystem.issueOffensive(state, this.playerCountryId, [divId], action.targetProvinceId);
+            }
+          }
+        }
+        break;
+      }
+
+      case 'orderStop': {
+        for (const divId of action.divisionIds) {
+          const div = state.divisions.get(divId);
+          if (!div || div.ownerId !== this.playerCountryId) continue;
+          if (div.status === 'landing') continue;
+          div.inOffensive = false;
+          div.targetProvinceId = null;
+          if (div.status === 'fighting' || div.status === 'moving' || div.status === 'retreating') {
+            div.status = 'ready';
+          }
+        }
+        break;
+      }
+
+      case 'orderRetreat': {
+        for (const divId of action.divisionIds) {
+          const div = state.divisions.get(divId);
+          if (!div || div.ownerId !== this.playerCountryId) continue;
+          if (div.status === 'landing') continue;
+          div.inOffensive = false;
+          div.status = 'retreating';
+          div.targetProvinceId = action.targetProvinceId;
+        }
+        break;
+      }
+
+      case 'orderSplitDivision': {
+        const div = state.divisions.get(action.divisionId);
+        if (!div || div.ownerId !== this.playerCountryId) break;
+        if (div.status === 'fighting' || div.status === 'training' || div.status === 'moving' || div.status === 'retreating' || div.status === 'landing') break;
+        if (div.strength.lessThan(Fixed.fromNumber(0.5))) break;
+
+        const newId = state.nextEntityId++;
+        const halfStrength = div.strength.mul(Fixed.fromNumber(0.5));
+        const halfOrg = div.organization.mul(Fixed.fromNumber(0.5));
+        const newDiv: Division = {
+          id: newId,
+          ownerId: div.ownerId,
+          templateId: div.templateId,
+          template: div.template.map(t => ({ ...t })),
+          organization: halfOrg,
+          hardness: div.hardness,
+          softAttack: div.softAttack.mul(Fixed.fromNumber(0.5)),
+          hardAttack: div.hardAttack.mul(Fixed.fromNumber(0.5)),
+          currentProvinceId: div.currentProvinceId,
+          targetProvinceId: null,
+          supply: div.supply,
+          supplyStatus: div.supplyStatus,
+          strength: halfStrength,
+          trainingProgress: Fixed.ONE,
+          status: 'ready',
+          inOffensive: false,
+        };
+        div.strength = halfStrength;
+        div.organization = halfOrg;
+        div.softAttack = div.softAttack.mul(Fixed.fromNumber(0.5));
+        div.hardAttack = div.hardAttack.mul(Fixed.fromNumber(0.5));
+        state.divisions.set(newId, newDiv);
+        break;
+      }
+
+      case 'orderMergeDivisions': {
+        if (action.divisionIds.length !== 2) break;
+        const div1 = state.divisions.get(action.divisionIds[0]);
+        const div2 = state.divisions.get(action.divisionIds[1]);
+        if (!div1 || !div2) break;
+        if (div1.ownerId !== this.playerCountryId || div2.ownerId !== this.playerCountryId) break;
+        if (div1.currentProvinceId !== div2.currentProvinceId) break;
+        if (div1.status === 'fighting' || div1.status === 'training' || div1.status === 'moving' || div1.status === 'retreating' || div1.status === 'landing') break;
+        if (div2.status === 'fighting' || div2.status === 'training' || div2.status === 'moving' || div2.status === 'retreating' || div2.status === 'landing') break;
+
+        const newStrength = div1.strength.add(div2.strength);
+        div1.strength = newStrength.greaterThan(Fixed.ONE) ? Fixed.ONE : newStrength;
+        const newOrg = div1.organization.add(div2.organization);
+        div1.organization = newOrg.greaterThan(Fixed.ONE) ? Fixed.ONE : newOrg;
+        const maxSoftAtk = Fixed.fromInt(30);
+        const newSoftAtk = div1.softAttack.add(div2.softAttack);
+        div1.softAttack = newSoftAtk.greaterThan(maxSoftAtk) ? maxSoftAtk : newSoftAtk;
+        const maxHardAtk = Fixed.fromInt(10);
+        const newHardAtk = div1.hardAttack.add(div2.hardAttack);
+        div1.hardAttack = newHardAtk.greaterThan(maxHardAtk) ? maxHardAtk : newHardAtk;
+        state.divisions.delete(div2.id);
+        break;
+      }
+
       default:
-        // 该 action 由后续系统 spec 处理（joinFaction），本 spec 范围外 noop
         break;
     }
+    return actionEvents;
   }
 
   /** 按资源类型累加到储备对应字段 */
