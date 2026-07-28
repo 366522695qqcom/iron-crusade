@@ -21,18 +21,19 @@ import {
   RADIUS,
 } from '../../core/ui_theme';
 
-export type DiplomacyAction = 'ally' | 'initiateDispute' | 'trade';
+export type DiplomacyAction = 'ally' | 'initiateDispute' | 'trade' | 'warOverview';
 
 export class DiplomacyPanel extends PanelBase {
   private _disputeBar: Graphics | null = null;
   private _disputeBarW = 0;
   private _disputeLabel: Label | null = null;
   private _actionCb: ((action: DiplomacyAction) => void) | null = null;
+  private _atWar = false;
 
   onMount(): void {
     const node = this.node!;
     const w = 320;
-    const h = 280;
+    const h = 330;
     node.setContentSize(w, h);
     addEdgeWidget(node, 'left', SPACING.LG, 240);
 
@@ -53,12 +54,13 @@ export class DiplomacyPanel extends PanelBase {
     drawProgressBar(bar.graphics, -barW / 2, -4, barW, 8, 0, NEUTRAL_PALETTE.bgMid, COMBAT_PALETTE.disputeLow);
     this._disputeBar = bar.graphics;
 
-    // 三按钮
+    // 四按钮（含战争总览）
     const btnW = w - SPACING.XL * 2;
-    const btnH = 44;
+    const btnH = 40;
     const gap = SPACING.SM;
     const startY = -h / 2 + SPACING.LG + btnH / 2;
     const btns: { action: DiplomacyAction; label: string; fill: typeof COMBAT_PALETTE.primary; pressed: typeof COMBAT_PALETTE.pressed }[] = [
+      { action: 'warOverview', label: '战争总览', fill: COMBAT_PALETTE.primary, pressed: COMBAT_PALETTE.pressed },
       { action: 'ally', label: '结盟', fill: NEUTRAL_PALETTE.textPrimary, pressed: NEUTRAL_PALETTE.textSecondary },
       { action: 'initiateDispute', label: '发起区域争端', fill: COMBAT_PALETTE.disputeLow, pressed: COMBAT_PALETTE.primary },
       { action: 'trade', label: '贸易', fill: INDUSTRY_PALETTE.resourceOk, pressed: INDUSTRY_PALETTE.secondary },
@@ -66,7 +68,7 @@ export class DiplomacyPanel extends PanelBase {
     for (let i = 0; i < btns.length; i++) {
       const def = btns[i];
       const btn = makeButton(node, def.label, btnW, btnH, def.fill, def.pressed, FONT_SIZE.BODY, `Btn_${def.action}`);
-      btn.node.setPosition(0, startY + (2 - i) * (btnH + gap), 0);
+      btn.node.setPosition(0, startY + (3 - i) * (btnH + gap), 0);
       btn.node.on('click', () => this._actionCb?.(def.action));
     }
   }
@@ -79,10 +81,25 @@ export class DiplomacyPanel extends PanelBase {
   /** 刷新争端决心（S.2 脱敏：原"战争支持度"） */
   updateDisputeResolve(ratio: number): void {
     if (this._disputeLabel) {
-      this._disputeLabel.string = `争端决心：${Math.round(ratio * 100)}%`;
+      if (this._atWar) {
+        this._disputeLabel.string = '状态：战争中';
+      } else {
+        this._disputeLabel.string = `争端决心：${Math.round(ratio * 100)}%`;
+      }
     }
     if (this._disputeBar) {
-      drawProgressBar(this._disputeBar, -this._disputeBarW / 2, -4, this._disputeBarW, 8, ratio, NEUTRAL_PALETTE.bgMid, COMBAT_PALETTE.disputeLow);
+      const fillColor = this._atWar ? COMBAT_PALETTE.primary : COMBAT_PALETTE.disputeLow;
+      drawProgressBar(this._disputeBar, -this._disputeBarW / 2, -4, this._disputeBarW, 8, ratio, NEUTRAL_PALETTE.bgMid, fillColor);
+    }
+  }
+
+  /** 设置战争状态 */
+  setAtWar(atWar: boolean): void {
+    this._atWar = atWar;
+    if (this._disputeLabel) {
+      if (atWar) {
+        this._disputeLabel.string = '状态：战争中';
+      }
     }
   }
 }
