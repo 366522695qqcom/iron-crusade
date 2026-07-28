@@ -55,15 +55,17 @@ function makeTestState(): WorldState {
   const provinces = new SortedMap<number, WorldState['provinces'] extends SortedMap<infer K, infer V> ? V : never>();
   provinces.set(1, {
     id: 1, ownerId: 'p1', controllerId: 'p1', name: 'A',
-    terrain: 'plains', isCoastal: false,
+    terrain: 'plains', isCoastal: false, adjacentProvinceIds: [],
     infrastructure: 3, buildingSlots: 4, combatWidth: 10,
-    supplyHubLevel: 1, fortLevel: 0, VP: 10,
+    supplyHubLevel: 1, fortLevel: 0, portLevel: 0, airBaseLevel: 1,
+    adjacentSeaZoneIds: [], VP: 10,
   });
   provinces.set(2, {
     id: 2, ownerId: 'e1', controllerId: 'e1', name: 'B',
-    terrain: 'mountain', isCoastal: false,
+    terrain: 'mountain', isCoastal: false, adjacentProvinceIds: [],
     infrastructure: 1, buildingSlots: 2, combatWidth: 6,
-    supplyHubLevel: 0, fortLevel: 2, VP: 8,
+    supplyHubLevel: 0, fortLevel: 2, portLevel: 0, airBaseLevel: 0,
+    adjacentSeaZoneIds: [], VP: 8,
   });
 
   const stockpiles = new SortedMap<string, WorldState['stockpiles'] extends SortedMap<infer K, infer V> ? V : never>();
@@ -129,12 +131,28 @@ function makeTestState(): WorldState {
     productionTasks: new SortedMap(),
     equipmentPools,
     divisions: new SortedMap(),
+    divisionTemplates: new SortedMap(),
+    supplyNetwork: { provinceSupply: new SortedMap(), seaSupplyRoutes: [], lastRecalcTick: 0 },
     focusTrees: new SortedMap(),
     research: new SortedMap(),
     disputes: new SortedMap(),
     fronts: new SortedMap(),
+    warLosses: new SortedMap(),
+    warLog: [],
+    selectedUnitIds: [],
     nextEntityId: 2,
     seedMap: { 'p1': 100, 'e1': 200 },
+    gameOver: null,
+    shipTemplates: new SortedMap(),
+    ships: new SortedMap(),
+    fleets: new SortedMap(),
+    seaZones: new SortedMap(),
+    seaControl: new SortedMap(),
+    convoyRoutes: [],
+    airZones: new SortedMap(),
+    wings: new SortedMap(),
+    airSuperiority: new SortedMap(),
+    invasions: new SortedMap(),
   };
 }
 
@@ -305,10 +323,6 @@ describe('Simulation tick 确定性', () => {
       if (i === 10) {
         actions.push({ kind: 'recruitDivision', provinceId: 1 });
       }
-      // 第 700 tick 师团训练完成需要约600tick，但dtMs=100ms，TRAINING_MS=60000ms=600tick，所以从10帧招募到610帧才完成，但我们只跑500帧
-      // 改为在较早帧招募确保训练期间就有状态变化
-      // 第 20 帧：e1 招募师团（模拟AI，直接在state中操作？不，e1是AI国家，simulation只处理playerCountryId=p1的action
-      // 第 200 帧：训练完成约在610帧，那我们在初始state直接放一个ready师团
       const r1 = sim1.tick(i, actions);
       const r2 = sim2.tick(i, actions);
       if (i % 16 === 0) {
@@ -334,6 +348,7 @@ describe('Simulation tick 确定性', () => {
       // 初始放一个ready师团
       s.divisions.set(100, {
         id: 100, ownerId: 'p1',
+        templateId: 'infantry',
         template: [
           { slot: 0, equipmentType: 'infantry_equipment' },
           { slot: 1, equipmentType: 'infantry_equipment' },
@@ -380,5 +395,165 @@ describe('Simulation tick 确定性', () => {
     const final1 = sim1.tick(500, []).hash;
     const final2 = sim2.tick(500, []).hash;
     expect(final1).toBe(final2);
+  });
+});
+
+describe('M1 师团命令（拆分/合并/选中/移动）', () => {
+  function makeReadyDivisionState(): WorldState {
+    const s = makeTestState();
+    s.provinces.get(1)!.adjacentProvinceIds = [3];
+    s.provinces.set(3, {
+      id: 3, ownerId: 'p1', controllerId: 'p1', name: 'C',
+      terrain: 'plains', isCoastal: false, adjacentProvinceIds: [1],
+      infrastructure: 2, buildingSlots: 3, combatWidth: 8,
+      supplyHubLevel: 0, fortLevel: 0, portLevel: 0, airBaseLevel: 0,
+      adjacentSeaZoneIds: [], VP: 5,
+    });
+    s.countries.get('p1')!.controlledProvinceIds = [1, 3];
+    s.countries.get('p1')!.ownedProvinceIds = [1, 3];
+
+    const pool = s.equipmentPools.get('p1')!;
+    for (const stock of pool.stocks) {
+      if (stock.type === 'infantry_equipment') stock.count = 2000;
+    }
+    s.stockpiles.get('p1')!.political = Fixed.fromInt(500);
+
+    s.divisions.set(100, {
+      id: 100, ownerId: 'p1',
+      templateId: 'infantry',
+      template: [
+        { slot: 0, equipmentType: 'infantry_equipment' },
+        { slot: 1, equipmentType: 'infantry_equipment' },
+        { slot: 2, equipmentType: 'infantry_equipment' },
+        { slot: 3, equipmentType: 'infantry_equipment' },
+      ],
+      organization: Fixed.ONE,
+      hardness: Fixed.fromNumber(0.1),
+      softAttack: Fixed.fromInt(30),
+      hardAttack: Fixed.fromInt(5),
+      currentProvinceId: 1,
+      targetProvinceId: null,
+      supply: Fixed.ONE,
+      strength: Fixed.ONE,
+      trainingProgress: Fixed.ONE,
+      status: 'ready',
+      inOffensive: false,
+    });
+    s.nextEntityId = 101;
+    return s;
+  }
+
+  it('selectUnits/deselectUnits 更新selectedUnitIds', () => {
+    const sim = DefaultSimulation.create(makeReadyDivisionState());
+    sim.tick(0, [{ kind: 'selectUnits', unitIds: [100] }]);
+    let snap = sim.snapshot();
+    expect(snap.selectedUnitIds).toEqual([100]);
+
+    sim.tick(1, [{ kind: 'selectUnits', unitIds: [101], additive: true }]);
+    snap = sim.snapshot();
+    expect(snap.selectedUnitIds).toEqual([100]);
+
+    sim.tick(2, [{ kind: 'deselectUnits' }]);
+    snap = sim.snapshot();
+    expect(snap.selectedUnitIds).toEqual([]);
+  });
+
+  it('orderSplitDivision 将满编师团拆成两个半编师团', () => {
+    const sim = DefaultSimulation.create(makeReadyDivisionState());
+    sim.tick(0, [{ kind: 'orderSplitDivision', divisionId: 100 }]);
+    const snap = sim.snapshot();
+
+    expect(snap.divisions.size()).toBe(2);
+    const div1 = snap.divisions.get(100)!;
+    const div2 = snap.divisions.get(101)!;
+    expect(div1.strength.toNumber()).toBeCloseTo(0.5);
+    expect(div1.organization.toNumber()).toBeCloseTo(0.5);
+    expect(div2.strength.toNumber()).toBeCloseTo(0.5);
+    expect(div2.organization.toNumber()).toBeCloseTo(0.5);
+    expect(div2.status).toBe('ready');
+    expect(div2.currentProvinceId).toBe(1);
+    expect(div1.softAttack.toNumber()).toBe(15);
+    expect(div2.softAttack.toNumber()).toBe(15);
+  });
+
+  it('orderSplitDivision 拒绝低strength师团（<0.5）', () => {
+    const s = makeReadyDivisionState();
+    s.divisions.get(100)!.strength = Fixed.fromNumber(0.3);
+    const sim = DefaultSimulation.create(s);
+    sim.tick(0, [{ kind: 'orderSplitDivision', divisionId: 100 }]);
+    expect(sim.snapshot().divisions.size()).toBe(1);
+  });
+
+  it('orderMergeDivisions 同省两个不满编师团合并', () => {
+    const s = makeReadyDivisionState();
+    s.divisions.set(101, {
+      id: 101, ownerId: 'p1',
+      templateId: 'infantry',
+      template: s.divisions.get(100)!.template.map(t => ({ ...t })),
+      organization: Fixed.fromNumber(0.4),
+      hardness: Fixed.fromNumber(0.1),
+      softAttack: Fixed.fromInt(10),
+      hardAttack: Fixed.fromInt(2),
+      currentProvinceId: 1,
+      targetProvinceId: null,
+      supply: Fixed.ONE,
+      strength: Fixed.fromNumber(0.4),
+      trainingProgress: Fixed.ONE,
+      status: 'ready',
+      inOffensive: false,
+    });
+    s.divisions.get(100)!.strength = Fixed.fromNumber(0.5);
+    s.divisions.get(100)!.organization = Fixed.fromNumber(0.4);
+    s.nextEntityId = 102;
+
+    const sim = DefaultSimulation.create(s);
+    sim.tick(0, [{ kind: 'orderMergeDivisions', divisionIds: [100, 101] }]);
+    const snap = sim.snapshot();
+
+    expect(snap.divisions.size()).toBe(1);
+    const merged = snap.divisions.get(100)!;
+    expect(merged.strength.toNumber()).toBeCloseTo(0.9);
+    expect(merged.organization.toNumber()).toBeCloseTo(0.8);
+  });
+
+  it('orderMergeDivisions 拒绝不同省师团合并', () => {
+    const s = makeReadyDivisionState();
+    s.divisions.set(101, {
+      id: 101, ownerId: 'p1',
+      templateId: 'infantry',
+      template: s.divisions.get(100)!.template.map(t => ({ ...t })),
+      organization: Fixed.fromNumber(0.4),
+      hardness: Fixed.fromNumber(0.1),
+      softAttack: Fixed.fromInt(10),
+      hardAttack: Fixed.fromInt(2),
+      currentProvinceId: 3,
+      targetProvinceId: null,
+      supply: Fixed.ONE,
+      strength: Fixed.fromNumber(0.4),
+      trainingProgress: Fixed.ONE,
+      status: 'ready',
+      inOffensive: false,
+    });
+    s.nextEntityId = 102;
+
+    const sim = DefaultSimulation.create(s);
+    sim.tick(0, [{ kind: 'orderMergeDivisions', divisionIds: [100, 101] }]);
+    expect(sim.snapshot().divisions.size()).toBe(2);
+  });
+
+  it('orderStop 取消师团移动/进攻', () => {
+    const s = makeReadyDivisionState();
+    const div = s.divisions.get(100)!;
+    div.status = 'moving';
+    div.targetProvinceId = 3;
+    div.inOffensive = true;
+
+    const sim = DefaultSimulation.create(s);
+    sim.tick(0, [{ kind: 'orderStop', divisionIds: [100] }]);
+    const snap = sim.snapshot();
+    const after = snap.divisions.get(100)!;
+    expect(after.status).toBe('ready');
+    expect(after.targetProvinceId).toBeNull();
+    expect(after.inOffensive).toBe(false);
   });
 });
