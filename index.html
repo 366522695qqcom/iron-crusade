@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hearts of Iron IV · Web UI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  /* ============ 设计令牌 ============ */
+  :root{
+    --bg-deep:#15120d;
+    --bg:#1d1812;
+    --panel:#272017;
+    --panel-2:#322920;
+    --panel-3:#3d3325;
+    --brass:#7a6238;
+    --brass-bright:#c9a961;
+    --gold:#e0c068;
+    --gold-soft:#b89854;
+    --tan:#d8c89c;
+    --tan-dim:#a89870;
+    --khaki:#8b7d5b;
+    --ink:#1a140c;
+    --text:#e8dcc0;
+    --text-dim:#8a8068;
+    --text-bright:#f5ecd2;
+    --red:#c0392b;
+    --red-dark:#7a2218;
+    --green:#5a8b3a;
+    --green-dark:#3a5a25;
+    --blue:#3a6a8b;
+    --blue-dark:#243d52;
+    --alarm:#e8552c;
+    --shadow:0 6px 22px rgba(0,0,0,.55), 0 1px 0 rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'PT Serif', Georgia, serif;
+    background:var(--bg-deep);
+    color:var(--text);
+    user-select:none;
+    -webkit-font-smoothing:antialiased;
+    position:relative;
+  }
+  /* 全局噪点/纸张纹理 */
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;
+    background-image:
+      radial-gradient(circle at 30% 20%, rgba(255,220,150,.04), transparent 40%),
+      radial-gradient(circle at 70% 80%, rgba(120,90,40,.05), transparent 50%);
+    mix-blend-mode:overlay;opacity:.6;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:9998;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.6 0 0 0 0 0.5 0 0 0 0 0.3 0 0 0 0.18 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity:.25;mix-blend-mode:overlay;
+  }
+
+  h1,h2,h3,h4,.serif-display{font-family:'Cinzel', serif;letter-spacing:.04em}
+  button{font-family:inherit;cursor:pointer;color:inherit;border:none;background:none}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-track{background:rgba(0,0,0,.3)}
+  ::-webkit-scrollbar-thumb{background:var(--brass);border-radius:4px}
+  ::-webkit-scrollbar-thumb:hover{background:var(--brass-bright)}
+
+  /* ============ 应用主布局 ============ */
+  .app{
+    height:100vh;display:grid;
+    grid-template-rows:64px 1fr 116px;
+    background:var(--bg-deep);
+  }
+
+  /* ============ 顶部资源栏 ============ */
+  .topbar{
+    display:flex;align-items:stretch;
+    background:
+      linear-gradient(180deg, #2a2116 0%, #1f1810 60%, #15100a 100%);
+    border-bottom:2px solid #5a4724;
+    box-shadow:0 4px 16px rgba(0,0,0,.6), inset 0 1px 0 rgba(201,169,97,.18);
+    position:relative;z-index:30;
+  }
+  .topbar::after{
+    content:"";position:absolute;left:0;right:0;bottom:-6px;height:6px;
+    background:linear-gradient(180deg, rgba(0,0,0,.6), transparent);
+    pointer-events:none;
+  }
+  /* 国家模块 */
+  .nation-block{
+    display:flex;align-items:center;gap:10px;
+    padding:0 18px 0 14px;
+    border-right:1px solid rgba(0,0,0,.5);
+    box-shadow:1px 0 0 rgba(201,169,97,.18);
+    min-width:240px;
+  }
+  .flag{
+    width:46px;height:32px;flex:none;position:relative;
+    border:1px solid #2a1f10;
+    box-shadow:0 2px 4px rgba(0,0,0,.5);
+    background:#c0392b;
+    overflow:hidden;
+  }
+  .flag::before{ /* 模拟铁十字风格 */
+    content:"";position:absolute;inset:0;
+    background:
+      linear-gradient(45deg, transparent 47%, #1a140c 47% 53%, transparent 53%),
+      linear-gradient(-45deg, transparent 47%, #1a140c 47% 53%, transparent 53%),
+      radial-gradient(circle at 50% 50%, #1a140c 0 4px, transparent 4px);
+  }
+  .flag::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(180deg, rgba(255,255,255,.12), transparent 50%);
+  }
+  .nation-info{display:flex;flex-direction:column;line-height:1.15}
+  .nation-name{font-family:'Cinzel';font-weight:700;font-size:14px;color:var(--gold);letter-spacing:.06em}
+  .nation-gov{font-size:11px;color:var(--tan-dim);font-style:italic}
+
+  /* 资源条 */
+  .resources{display:flex;align-items:stretch;flex:1;gap:0;overflow-x:auto}
+  .res{
+    display:flex;align-items:center;gap:7px;
+    padding:0 12px;
+    border-right:1px solid rgba(0,0,0,.4);
+    position:relative;
+    min-width:90px;
+  }
+  .res:hover{background:rgba(201,169,97,.07)}
+  .res-icon{
+    width:28px;height:28px;flex:none;
+    border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--panel-3), var(--ink));
+    border:1px solid var(--brass);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Cinzel';font-weight:700;font-size:12px;color:var(--gold);
+    box-shadow:inset 0 1px 1px rgba(255,220,150,.15), 0 1px 2px rgba(0,0,0,.5);
+  }
+  .res-data{display:flex;flex-direction:column;line-height:1.1}
+  .res-val{font-family:'Cinzel';font-weight:600;font-size:14px;color:var(--text-bright)}
+  .res-val small{font-size:10px;color:var(--tan-dim);font-weight:400;margin-left:3px}
+  .res-label{font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em}
+  .res-rate{font-size:10px;font-weight:700}
+  .res-rate.pos{color:#9bc46a}
+  .res-rate.neg{color:#e0764e}
+
+  /* 速度/时间控制 */
+  .time-block{
+    display:flex;align-items:center;gap:8px;
+    padding:0 14px;
+    border-left:1px solid rgba(0,0,0,.5);
+    box-shadow:-1px 0 0 rgba(201,169,97,.18);
+  }
+  .date{
+    text-align:center;line-height:1.1;
+    padding:0 8px;
+  }
+  .date-day{font-family:'Cinzel';font-weight:700;font-size:18px;color:var(--gold)}
+  .date-meta{font-size:10px;color:var(--tan-dim);letter-spacing:.05em}
+  .speed-btns{display:flex;gap:3px}
+  .speed-btn{
+    width:24px;height:30px;
+    background:linear-gradient(180deg, var(--panel-2), var(--ink));
+    border:1px solid var(--brass);
+    color:var(--tan-dim);
+    font-family:'Cinzel';font-weight:700;font-size:11px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:2px;
+    transition:all .15s;
+  }
+  .speed-btn:hover{color:var(--gold);border-color:var(--gold-soft)}
+  .speed-btn.active{
+    background:linear-gradient(180deg, #4a3a1c, #2a1f10);
+    color:var(--gold);
+    border-color:var(--gold-soft);
+    box-shadow:inset 0 1px 3px rgba(0,0,0,.6), 0 0 6px rgba(224,192,104,.3);
+  }
+  .speed-btn.pause{color:var(--alarm)}
+
+  /* ============ 主体区 ============ */
+  .main{
+    display:grid;
+    grid-template-columns:1fr 380px;
+    overflow:hidden;position:relative;
+  }
+
+  /* 地图区 */
+  .map{
+    position:relative;overflow:hidden;
+    background:
+      radial-gradient(ellipse at 50% 40%, #2a3826 0%, #1a2418 50%, #0e1410 100%);
+    border-right:2px solid #5a4724;
+  }
+  .map-svg{position:absolute;inset:0;width:100%;height:100%}
+  /* 国家信息浮窗 */
+  .country-panel{
+    position:absolute;top:14px;left:14px;
+    width:280px;z-index:10;
+    background:linear-gradient(180deg, rgba(50,41,32,.96), rgba(30,24,16,.96));
+    border:1px solid var(--brass);
+    box-shadow:var(--shadow), inset 0 1px 0 rgba(201,169,97,.2);
+  }
+  .country-head{
+    padding:8px 12px;
+    background:linear-gradient(180deg, #4a3a1c, #2a1f10);
+    border-bottom:1px solid var(--brass);
+    display:flex;align-items:center;gap:10px;
+  }
+  .country-head .flag{width:34px;height:22px}
+  .country-head h2{font-size:13px;color:var(--gold);flex:1}
+  .country-head .leader{font-size:10px;color:var(--tan-dim);font-style:italic}
+  .country-body{padding:8px 12px;font-size:11px;line-height:1.7}
+  .country-body .row{display:flex;justify-content:space-between;color:var(--tan)}
+  .country-body .row strong{color:var(--text-bright)}
+  .pp-bar{
+    height:8px;background:#0c0a06;border:1px solid #1a140c;
+    margin-top:4px;position:relative;overflow:hidden;
+  }
+  .pp-fill{height:100%;background:linear-gradient(90deg, #c9a961, #e0c068);box-shadow:inset 0 1px 0 rgba(255,240,180,.4)}
+  .pp-bar small{position:absolute;right:4px;top:-2px;font-size:9px;color:var(--text-bright);text-shadow:0 1px 2px #000}
+
+  /* 通知/事件 */
+  .alerts{position:absolute;top:14px;right:14px;z-index:10;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+  .alert{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 12px;min-width:260px;
+    background:linear-gradient(180deg, rgba(60,30,20,.95), rgba(30,18,12,.95));
+    border:1px solid var(--brass);
+    border-left:3px solid var(--alarm);
+    box-shadow:var(--shadow);
+    font-size:11px;color:var(--text);
+    cursor:pointer;transition:transform .2s, background .2s;
+  }
+  .alert:hover{transform:translateX(-4px);background:linear-gradient(180deg, rgba(80,40,25,.95), rgba(40,22,14,.95))}
+  .alert-icon{
+    width:28px;height:28px;flex:none;
+    border:1px solid var(--alarm);color:var(--alarm);
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Cinzel';font-weight:700;font-size:14px;
+  }
+  .alert-text strong{display:block;color:var(--gold);font-size:12px}
+  .alert-text span{font-size:10px;color:var(--tan-dim)}
+
+  /* 地图图例 */
+  .map-legend{
+    position:absolute;left:14px;bottom:14px;z-index:10;
+    display:flex;gap:6px;flex-wrap:wrap;max-width:60%;
+  }
+  .legend-chip{
+    display:flex;align-items:center;gap:6px;
+    padding:4px 8px;font-size:10px;color:var(--tan);
+    background:rgba(20,16,10,.7);
+    border:1px solid rgba(122,98,56,.6);
+  }
+  .legend-chip .dot{width:8px;height:8px;border-radius:1px}
+
+  /* ============ 右侧功能面板 ============ */
+  .rightpanel{
+    display:flex;flex-direction:column;
+    background:
+      linear-gradient(180deg, #221a12 0%, #1a140c 100%);
+    overflow:hidden;
+  }
+  .tabs{
+    display:flex;
+    background:linear-gradient(180deg, #2a1f10, #15100a);
+    border-bottom:1px solid var(--brass);
+  }
+  .tab{
+    flex:1;padding:10px 4px;
+    font-family:'Cinzel';font-weight:600;font-size:10px;
+    color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;
+    background:transparent;border-right:1px solid rgba(0,0,0,.5);
+    border-bottom:2px solid transparent;
+    transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:4px;
+  }
+  .tab:last-child{border-right:none}
+  .tab svg{width:18px;height:18px;fill:currentColor}
+  .tab:hover{color:var(--tan);background:rgba(201,169,97,.05)}
+  .tab.active{
+    color:var(--gold);background:linear-gradient(180deg, #3a2d18, #1f1810);
+    border-bottom-color:var(--gold-soft);
+    box-shadow:inset 0 1px 0 rgba(224,192,104,.2);
+  }
+
+  .panel-content{flex:1;overflow-y:auto;position:relative}
+  .panel-section{display:none;padding:12px}
+  .panel-section.active{display:block}
+
+  .panel-title{
+    font-family:'Cinzel';font-weight:700;font-size:13px;
+    color:var(--gold);text-transform:uppercase;letter-spacing:.08em;
+    padding:6px 0 10px;border-bottom:1px solid var(--brass);
+    margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;
+  }
+  .panel-title .badge{
+    font-family:'PT Serif';font-weight:400;font-size:10px;
+    color:var(--tan-dim);text-transform:none;letter-spacing:0;
+  }
+
+  /* 国家焦点树 */
+  .focus-tree{
+    position:relative;height:520px;
+    background:
+      radial-gradient(circle at 50% 0%, rgba(60,50,30,.4), transparent 70%),
+      linear-gradient(180deg, rgba(20,14,8,.6), rgba(10,7,4,.8));
+    border:1px solid rgba(122,98,56,.5);
+    overflow-x:auto;overflow-y:hidden;
+  }
+  .focus-svg{width:100%;height:100%;display:block}
+  .focus-node{
+    cursor:pointer;transition:filter .15s;
+  }
+  .focus-node:hover{filter:brightness(1.3) drop-shadow(0 0 4px rgba(224,192,104,.6))}
+  .focus-node rect{
+    fill:#2a2118;
+    stroke:var(--brass);stroke-width:1.5;
+  }
+  .focus-node text{fill:var(--tan);font-family:'Cinzel';font-weight:600;font-size:8px;text-anchor:middle}
+  .focus-node.done rect{fill:#3a2a14;stroke:#5a8b3a}
+  .focus-node.active rect{fill:#4a3a1c;stroke:var(--gold-soft);stroke-width:2}
+  .focus-node.available rect{fill:#2a2118;stroke:var(--brass-bright)}
+  .focus-node.locked rect{fill:#1a140c;stroke:#3a3025;opacity:.6}
+  .focus-node.locked text{fill:#5a5040}
+
+  /* 科研 */
+  .research-list{display:flex;flex-direction:column;gap:8px}
+  .research-item{
+    padding:10px;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--brass);
+    position:relative;
+  }
+  .research-item:hover{border-color:var(--gold-soft)}
+  .res-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .res-head .res-icon{width:32px;height:32px;font-size:14px}
+  .res-info{flex:1}
+  .res-info h4{font-size:12px;color:var(--gold);margin-bottom:2px}
+  .res-info .meta{font-size:10px;color:var(--tan-dim)}
+  .res-info .meta .ahead{color:#e0764e}
+  .res-info .meta .behind{color:#9bc46a}
+  .res-slot{font-size:10px;color:var(--tan-dim);font-style:italic}
+  .progress-track{
+    height:10px;background:#0c0a06;
+    border:1px solid #1a140c;position:relative;overflow:hidden;
+  }
+  .progress-fill{
+    height:100%;position:relative;
+    background:linear-gradient(90deg, var(--green-dark), var(--green));
+    box-shadow:inset 0 1px 0 rgba(180,220,140,.3);
+  }
+  .progress-fill::after{
+    content:"";position:absolute;inset:0;
+    background:linear-gradient(90deg, transparent 0%, rgba(255,255,255,.15) 50%, transparent 100%);
+    animation:shimmer 2s infinite linear;
+  }
+  @keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+  .progress-meta{
+    display:flex;justify-content:space-between;
+    font-size:9px;color:var(--tan-dim);margin-top:3px;
+  }
+
+  /* 生产/建造队列 */
+  .prod-list{display:flex;flex-direction:column;gap:8px}
+  .prod-item{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 10px;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--brass);
+    position:relative;
+  }
+  .prod-item:hover{border-color:var(--gold-soft)}
+  .prod-icon{
+    width:38px;height:38px;flex:none;
+    background:radial-gradient(circle at 35% 30%, var(--panel-3), var(--ink));
+    border:1px solid var(--brass);
+    display:flex;align-items:center;justify-content:center;
+    color:var(--gold);font-family:'Cinzel';font-weight:700;
+  }
+  .prod-main{flex:1;min-width:0}
+  .prod-name{font-size:12px;color:var(--text-bright);font-weight:700;display:flex;justify-content:space-between;align-items:baseline}
+  .prod-name .qty{font-family:'Cinzel';color:var(--gold);font-size:11px}
+  .prod-bar{height:6px;background:#0c0a06;border:1px solid #1a140c;margin-top:4px;overflow:hidden}
+  .prod-fill{height:100%;background:linear-gradient(90deg, #6a4a1c, var(--brass-bright))}
+  .prod-meta{font-size:9px;color:var(--tan-dim);margin-top:2px;display:flex;justify-content:space-between}
+  .prod-factory{
+    width:30px;text-align:center;
+    font-family:'Cinzel';font-weight:700;color:var(--gold);font-size:11px;
+  }
+  .prod-factory small{display:block;font-size:8px;color:var(--tan-dim);font-weight:400}
+
+  /* ============ 底部军队栏 ============ */
+  .bottombar{
+    display:grid;
+    grid-template-columns:280px 1fr 320px;
+    background:linear-gradient(180deg, #1f1810 0%, #15100a 100%);
+    border-top:2px solid #5a4724;
+    box-shadow:0 -4px 16px rgba(0,0,0,.6), inset 0 1px 0 rgba(201,169,97,.18);
+    overflow:hidden;
+  }
+  /* 军队选择器 */
+  .army-select{
+    padding:10px 12px;
+    border-right:1px solid rgba(0,0,0,.5);
+    box-shadow:1px 0 0 rgba(201,169,97,.15);
+    display:flex;flex-direction:column;gap:6px;
+  }
+  .army-select h3{font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:.06em}
+  .army-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .army-chip{
+    display:flex;align-items:center;gap:6px;
+    padding:5px 8px;font-size:10px;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--brass);
+    cursor:pointer;transition:all .15s;
+  }
+  .army-chip:hover{border-color:var(--gold-soft)}
+  .army-chip.selected{
+    background:linear-gradient(180deg, #4a3a1c, #2a1f10);
+    border-color:var(--gold-soft);
+    box-shadow:inset 0 0 4px rgba(224,192,104,.2);
+  }
+  .army-chip .mark{width:14px;height:14px;border-radius:50%;background:var(--red);flex:none;border:1px solid #1a140c}
+  .army-chip.blue .mark{background:var(--blue)}
+  .army-chip.green .mark{background:var(--green)}
+  .army-chip .count{font-family:'Cinzel';color:var(--gold);font-weight:700;font-size:11px}
+
+  /* 作战计划 */
+  .battleplans{
+    padding:10px 14px;overflow-x:auto;
+    display:flex;gap:10px;align-items:center;
+  }
+  .plan-card{
+    flex:none;width:160px;
+    padding:8px;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--brass);
+    cursor:pointer;transition:all .15s;
+  }
+  .plan-card:hover{border-color:var(--gold-soft);transform:translateY(-2px)}
+  .plan-card.active{
+    border-color:var(--alarm);
+    box-shadow:0 0 8px rgba(232,85,44,.3);
+  }
+  .plan-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+  .plan-name{font-size:11px;color:var(--gold);font-weight:700}
+  .plan-status{font-size:9px;padding:1px 4px;border:1px solid;color:var(--tan-dim)}
+  .plan-status.ready{color:#9bc46a;border-color:#5a8b3a}
+  .plan-status.prep{color:#e0c068;border-color:var(--gold-soft)}
+  .plan-bar{height:5px;background:#0c0a06;margin:4px 0;border:1px solid #1a140c}
+  .plan-fill{height:100%;background:linear-gradient(90deg, var(--red-dark), var(--red))}
+  .plan-meta{font-size:9px;color:var(--tan-dim);display:flex;justify-content:space-between}
+
+  /* 控制按钮 */
+  .controls{
+    padding:10px 12px;
+    border-left:1px solid rgba(0,0,0,.5);
+    box-shadow:-1px 0 0 rgba(201,169,97,.15);
+    display:flex;flex-direction:column;gap:6px;justify-content:center;
+  }
+  .control-row{display:flex;gap:6px}
+  .ctrl-btn{
+    flex:1;padding:7px 6px;
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1px solid var(--brass);
+    color:var(--tan);font-size:10px;
+    font-family:'Cinzel';font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+    transition:all .15s;
+  }
+  .ctrl-btn:hover{color:var(--gold);border-color:var(--gold-soft);background:linear-gradient(180deg, #3a2d18, #1f1810)}
+  .ctrl-btn.primary{
+    background:linear-gradient(180deg, #6a2a1c, #3a1410);
+    border-color:var(--alarm);color:#ffd9c4;
+  }
+  .ctrl-btn.primary:hover{background:linear-gradient(180deg, #8a3a24, #4a1810)}
+
+  /* 通用：装饰角 */
+  .corner-deco{position:absolute;width:14px;height:14px;pointer-events:none}
+  .corner-deco svg{width:100%;height:100%;fill:var(--brass-bright);opacity:.7}
+  .corner-tl{top:3px;left:3px}
+  .corner-tr{top:3px;right:3px;transform:scaleX(-1)}
+  .corner-bl{bottom:3px;left:3px;transform:scaleY(-1)}
+  .corner-br{bottom:3px;right:3px;transform:scale(-1,-1)}
+
+  /* tooltip */
+  .tooltip{
+    position:fixed;z-index:1000;pointer-events:none;
+    padding:8px 12px;max-width:260px;
+    background:linear-gradient(180deg, rgba(40,30,18,.98), rgba(20,14,8,.98));
+    border:1px solid var(--gold-soft);
+    box-shadow:var(--shadow);
+    font-size:11px;color:var(--text);line-height:1.5;
+    opacity:0;transition:opacity .12s;
+  }
+  .tooltip.show{opacity:1}
+  .tooltip strong{color:var(--gold);display:block;margin-bottom:2px;font-family:'Cinzel'}
+  .tooltip .tt-meta{color:var(--tan-dim);font-size:10px;margin-top:4px;border-top:1px solid var(--brass);padding-top:4px}
+
+  /* 小屏提示 */
+  @media (max-width: 1100px){
+    .rightpanel{display:none}
+    .main{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ 顶部资源栏 ============ -->
+  <header class="topbar">
+    <div class="nation-block">
+      <div class="flag" title="Deutsches Reich"></div>
+      <div class="nation-info">
+        <span class="nation-name">DEUTSCHES REICH</span>
+        <span class="nation-gov">国家社会主义 · 阿道夫·希特勒</span>
+      </div>
+    </div>
+
+    <div class="resources">
+      <div class="res" data-tip="<strong>政治点数</strong>用于任命部长、顾问与外交行动。<div class='tt-meta'>每月 +1.0 · 阈值 999</div>">
+        <div class="res-icon">PP</div>
+        <div class="res-data">
+          <span class="res-val">847 <small>/999</small></span>
+          <span class="res-rate pos">+1.00/天</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>稳定度</strong>影响工厂产出与抵抗。<div class='tt-meta'>≥50% 无负面修正</div>">
+        <div class="res-icon">S</div>
+        <div class="res-data">
+          <span class="res-val">88%</span>
+          <span class="res-label">稳定度</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>战争支持度</strong>影响动员与作战能力。">
+        <div class="res-icon">W</div>
+        <div class="res-data">
+          <span class="res-val">62%</span>
+          <span class="res-label">战争支持</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>人力</strong>可招募的可用人口。">
+        <div class="res-icon">M</div>
+        <div class="res-data">
+          <span class="res-val">1.24M</span>
+          <span class="res-rate pos">+6.2K/月</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>工厂</strong>民用 / 军用 / 船坞。">
+        <div class="res-icon">F</div>
+        <div class="res-data">
+          <span class="res-val">62<span style="color:var(--tan-dim)">/</span>74<span style="color:var(--tan-dim)">/</span>21</span>
+          <span class="res-label">民/军/船</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>燃料</strong>舰队与装甲部队运行所需。">
+        <div class="res-icon">O</div>
+        <div class="res-data">
+          <span class="res-val">142k <small>/280k</small></span>
+          <span class="res-rate pos">+4.8k/天</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>石油</strong>战略资源。">
+        <div class="res-icon">⚡</div>
+        <div class="res-data">
+          <span class="res-val">+38</span>
+          <span class="res-label">石油</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>钢铁</strong>战略资源。">
+        <div class="res-icon">Fe</div>
+        <div class="res-data">
+          <span class="res-val">+148</span>
+          <span class="res-label">钢铁</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>铝</strong>战略资源。">
+        <div class="res-icon">Al</div>
+        <div class="res-data">
+          <span class="res-val">+22</span>
+          <span class="res-label">铝</span>
+        </div>
+      </div>
+      <div class="res" data-tip="<strong>橡胶</strong>战略资源。">
+        <div class="res-icon">Ru</div>
+        <div class="res-data">
+          <span class="res-val">−6</span>
+          <span class="res-rate neg">−6/天</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="time-block">
+      <div class="date">
+        <div class="date-day">1939.08.23</div>
+        <div class="date-meta">周三 · 晴</div>
+      </div>
+      <div class="speed-btns">
+        <button class="speed-btn pause" title="暂停" data-tip="<strong>暂停</strong>时间停止流逝。">❚❚</button>
+        <button class="speed-btn" data-speed="1">1</button>
+        <button class="speed-btn" data-speed="2">2</button>
+        <button class="speed-btn active" data-speed="3">3</button>
+        <button class="speed-btn" data-speed="4">4</button>
+        <button class="speed-btn" data-speed="5">5</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ 主体 ============ -->
+  <main class="main">
+
+    <!-- 地图 -->
+    <section class="map" id="map">
+      <svg class="map-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+        <!-- 海洋纹理 -->
+        <defs>
+          <radialGradient id="seaGrad" cx="50%" cy="40%" r="80%">
+            <stop offset="0%" stop-color="#2a4258"/>
+            <stop offset="60%" stop-color="#1a2c3d"/>
+            <stop offset="100%" stop-color="#0e1820"/>
+          </radialGradient>
+          <linearGradient id="landGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#5a5230"/>
+            <stop offset="100%" stop-color="#3a3520"/>
+          </linearGradient>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M40 0H0V40" fill="none" stroke="rgba(255,220,150,.04)" stroke-width="0.5"/>
+          </pattern>
+          <filter id="landShadow">
+            <feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity="0.5"/>
+          </filter>
+        </defs>
+        <rect width="1600" height="900" fill="url(#seaGrad)"/>
+        <rect width="1600" height="900" fill="url(#grid)"/>
+
+        <!-- 简化的欧洲轮廓（仅示意） -->
+        <g filter="url(#landShadow)" fill="url(#landGrad)" stroke="#1a140c" stroke-width="1.2">
+          <!-- 大陆主体 -->
+          <path d="M180,250 L420,200 L640,180 L880,210 L1080,200 L1280,240 L1380,320 L1340,440 L1180,500 L980,520 L760,540 L540,560 L320,520 L200,440 Z"/>
+          <!-- 不列颠群岛 -->
+          <path d="M320,180 L420,160 L460,220 L420,280 L340,260 Z"/>
+          <!-- 斯堪的纳维亚 -->
+          <path d="M540,80 L760,60 L820,160 L700,200 L600,180 Z"/>
+          <!-- 伊比利亚 -->
+          <path d="M180,540 L320,520 L360,640 L260,680 L160,620 Z"/>
+          <!-- 意大利 -->
+          <path d="M760,540 L820,560 L840,680 L800,720 L760,660 Z"/>
+          <!-- 巴尔干 -->
+          <path d="M980,540 L1140,560 L1120,680 L1000,660 Z"/>
+          <!-- 北非 -->
+          <path d="M260,720 L760,710 L760,820 L320,840 L200,800 Z"/>
+          <!-- 苏联东部（部分） -->
+          <path d="M1280,240 L1560,260 L1560,520 L1340,540 L1280,440 Z"/>
+        </g>
+
+        <!-- 国界线 -->
+        <g fill="none" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.7">
+          <path d="M760,180 L760,540" stroke="#c0392b"/>
+          <path d="M880,210 L880,500" stroke="#3a6a8b"/>
+          <path d="M980,520 L980,660" stroke="#5a8b3a"/>
+        </g>
+
+        <!-- 前线（红色锯齿） -->
+        <g stroke="#e8552c" stroke-width="2.5" fill="none" stroke-linecap="round">
+          <path d="M760,540 L820,520 L780,500 L840,480 L800,460"/>
+        </g>
+
+        <!-- 单位标记 -->
+        <g font-family="Cinzel" font-weight="700" text-anchor="middle">
+          <!-- 德国陆军 -->
+          <g class="unit de" transform="translate(640,400)">
+            <circle r="14" fill="#3a2a14" stroke="#c9a961" stroke-width="1.5"/>
+            <text y="4" fill="#e0c068" font-size="11">XIV</text>
+          </g>
+          <g class="unit de" transform="translate(700,460)">
+            <circle r="14" fill="#3a2a14" stroke="#c9a961" stroke-width="1.5"/>
+            <text y="4" fill="#e0c068" font-size="11">III</text>
+          </g>
+          <g class="unit de" transform="translate(580,440)">
+            <circle r="14" fill="#3a2a14" stroke="#c9a961" stroke-width="1.5"/>
+            <text y="4" fill="#e0c068" font-size="11">XXI</text>
+          </g>
+          <!-- 波兰陆军 -->
+          <g class="unit pl" transform="translate(820,360)">
+            <circle r="14" fill="#2a3858" stroke="#9bb4d4" stroke-width="1.5"/>
+            <text y="4" fill="#9bb4d4" font-size="11">VII</text>
+          </g>
+          <g class="unit pl" transform="translate(860,420)">
+            <circle r="14" fill="#2a3858" stroke="#9bb4d4" stroke-width="1.5"/>
+            <text y="4" fill="#9bb4d4" font-size="11">II</text>
+          </g>
+          <!-- 空军 -->
+          <g class="unit air" transform="translate(620,320)">
+            <rect x="-12" y="-8" width="24" height="16" fill="#3a2a14" stroke="#e0c068" stroke-width="1.5" rx="2"/>
+            <text y="3" fill="#e0c068" font-size="9">✈</text>
+          </g>
+        </g>
+
+        <!-- 作战计划箭头 -->
+        <g stroke="#e8552c" stroke-width="2" fill="none" opacity="0.85" stroke-dasharray="6,3">
+          <path d="M640,400 Q720,360 820,360" marker-end="url(#arrow)"/>
+        </g>
+        <defs>
+          <marker id="arrow" markerWidth="10" markerHeight="10" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#e8552c"/>
+          </marker>
+        </defs>
+
+        <!-- 城市点 -->
+        <g fill="#f5ecd2" stroke="#1a140c" stroke-width="0.8">
+          <circle cx="640" cy="400" r="3"/>
+          <circle cx="760" cy="540" r="2.5"/>
+          <circle cx="820" cy="360" r="2.5"/>
+          <circle cx="400" cy="220" r="2.5"/>
+          <circle cx="980" cy="540" r="2.5"/>
+        </g>
+        <g font-family="PT Serif" font-size="11" fill="#e8dcc0" font-style="italic">
+          <text x="646" y="395">柏林</text>
+          <text x="766" y="535">慕尼黑</text>
+          <text x="826" y="355">华沙</text>
+          <text x="406" y="215">汉堡</text>
+          <text x="986" y="535">维也纳</text>
+        </g>
+
+        <!-- 罗盘 -->
+        <g transform="translate(1500,80)" opacity="0.7">
+          <circle r="32" fill="rgba(20,16,10,.7)" stroke="#c9a961" stroke-width="1.5"/>
+          <path d="M0,-26 L4,0 L0,4 L-4,0 Z" fill="#e8552c"/>
+          <path d="M0,26 L4,0 L0,-4 L-4,0 Z" fill="#8a8068"/>
+          <text y="-34" text-anchor="middle" font-family="Cinzel" font-size="9" fill="#e0c068">N</text>
+          <text y="42" text-anchor="middle" font-family="Cinzel" font-size="9" fill="#8a8068">S</text>
+        </g>
+      </svg>
+
+      <!-- 国家信息浮窗 -->
+      <div class="country-panel">
+        <span class="corner-deco corner-tl"><svg viewBox="0 0 14 14"><path d="M0,0 L14,0 L14,2 L2,2 L2,14 L0,14 Z"/></svg></span>
+        <span class="corner-deco corner-tr"><svg viewBox="0 0 14 14"><path d="M0,0 L14,0 L14,2 L2,2 L2,14 L0,14 Z"/></svg></span>
+        <span class="corner-deco corner-bl"><svg viewBox="0 0 14 14"><path d="M0,0 L14,0 L14,2 L2,2 L2,14 L0,14 Z"/></svg></span>
+        <span class="corner-deco corner-br"><svg viewBox="0 0 14 14"><path d="M0,0 L14,0 L14,2 L2,2 L2,14 L0,14 Z"/></svg></span>
+        <div class="country-head">
+          <div class="flag"></div>
+          <div>
+            <h2>德意志国</h2>
+            <div class="leader">元首 · A. 希特勒</div>
+          </div>
+        </div>
+        <div class="country-body">
+          <div class="row"><span>阵营</span><strong>轴心国</strong></div>
+          <div class="row"><span>总工厂</span><strong>137</strong></div>
+          <div class="row"><span>师团</span><strong>92 / 上限 124</strong></div>
+          <div class="row"><span>舰队</span><strong>32 艘</strong></div>
+          <div class="row"><span>世界紧张度</span><strong style="color:var(--alarm)">78%</strong></div>
+          <div style="margin-top:6px">
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--tan-dim)">
+              <span>政治点数</span><span>847 / 999</span>
+            </div>
+            <div class="pp-bar"><div class="pp-fill" style="width:84.7%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 通知 -->
+      <div class="alerts">
+        <div class="alert" data-tip="<strong>白色方案</strong>对波兰宣战计划已就绪。">
+          <div class="alert-icon">!</div>
+          <div class="alert-text">
+            <strong>白色方案准备完毕</strong>
+            <span>对波兰的入侵计划可立即执行</span>
+          </div>
+        </div>
+        <div class="alert" data-tip="<strong>莫洛托夫-里宾特洛甫条约</strong>与苏联签订互不侵犯条约。">
+          <div class="alert-icon">§</div>
+          <div class="alert-text">
+            <strong>外交事件</strong>
+            <span>苏德签署互不侵犯条约</span>
+          </div>
+        </div>
+        <div class="alert" data-tip="<strong>研究完成</strong>新型装备已解锁。">
+          <div class="alert-icon">✦</div>
+          <div class="alert-text">
+            <strong>研究完成</strong>
+            <span>装甲战争学说 · III</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 图例 -->
+      <div class="map-legend">
+        <div class="legend-chip"><span class="dot" style="background:#c0392b"></span>轴心国</div>
+        <div class="legend-chip"><span class="dot" style="background:#3a6a8b"></span>同盟国</div>
+        <div class="legend-chip"><span class="dot" style="background:#5a8b3a"></span>共产国际</div>
+        <div class="legend-chip"><span class="dot" style="background:#e8552c"></span>前线</div>
+      </div>
+    </section>
+
+    <!-- 右侧功能面板 -->
+    <aside class="rightpanel">
+      <nav class="tabs">
+        <button class="tab active" data-tab="focus">
+          <svg viewBox="0 0 24 24"><path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.2L19.5 8 12 11.8 4.5 8 12 4.2zM4 9.4l7 3.5v7.2l-7-3.5V9.4zm9 10.7v-7.2l7-3.5v7.2l-7 3.5z"/></svg>
+          国家焦点
+        </button>
+        <button class="tab" data-tab="research">
+          <svg viewBox="0 0 24 24"><path d="M12 1a4 4 0 014 4c0 1.5-.8 2.8-2 3.5V11h3a3 3 0 013 3v2h-1v6H5v-6H4v-2a3 3 0 013-3h3V8.5A4 4 0 018 5a4 4 0 014-4zm-5 18h10v-4H7v4zM7 13v2h10v-2H7zm5-10a2 2 0 00-1 3.7V11h2V6.7A2 2 0 0012 3z"/></svg>
+          科研
+        </button>
+        <button class="tab" data-tab="production">
+          <svg viewBox="0 0 24 24"><path d="M2 6h2v12H2V6zm4 0h2l3 4h2V6h2v12h-2v-7l-3 4H8L5 11v7H3V6h2zm14 0h4v2h-4v8h4v2h-4a2 2 0 01-2-2V8a2 2 0 012-2z"/></svg>
+          生产
+        </button>
+        <button class="tab" data-tab="construction">
+          <svg viewBox="0 0 24 24"><path d="M3 21h18v-2H3v2zm0-4h4v-4l5-5 5 5v4h4V9l-9-7-9 7v8zm6 0h6v-3l-3-3-3 3v3z"/></svg>
+          建造
+        </button>
+      </nav>
+
+      <div class="panel-content">
+        <!-- 国家焦点树 -->
+        <section class="panel-section active" data-panel="focus">
+          <div class="panel-title">
+            国家焦点 · 七年计划
+            <span class="badge">完成 4 / 18</span>
+          </div>
+          <div class="focus-tree">
+            <svg class="focus-svg" viewBox="0 0 360 520" preserveAspectRatio="xMinYMin meet">
+              <!-- 连接线 -->
+              <g stroke="#5a4724" stroke-width="1.5" fill="none">
+                <path d="M60,40 L60,100"/>
+                <path d="M180,40 L180,100"/>
+                <path d="M300,40 L300,100"/>
+                <path d="M60,130 L60,190 L120,190 L120,250"/>
+                <path d="M180,130 L180,190"/>
+                <path d="M300,130 L300,190 L240,190 L240,250"/>
+                <path d="M180,250 L180,310"/>
+                <path d="M120,280 L180,310" stroke-dasharray="3,3"/>
+                <path d="M240,280 L180,310" stroke-dasharray="3,3"/>
+                <path d="M180,340 L180,400"/>
+                <path d="M180,430 L180,490"/>
+              </g>
+              <!-- 节点 -->
+              <g class="focus-node done" transform="translate(20,10)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">莱茵兰</text>
+              </g>
+              <g class="focus-node done" transform="translate(140,10)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">四年计划</text>
+              </g>
+              <g class="focus-node done" transform="translate(260,10)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">德奥合并</text>
+              </g>
+              <g class="focus-node active" transform="translate(20,100)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">苏台德区</text>
+              </g>
+              <g class="focus-node available" transform="translate(140,100)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">海军扩张</text>
+              </g>
+              <g class="focus-node locked" transform="translate(260,100)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">安施卢斯</text>
+              </g>
+              <g class="focus-node available" transform="translate(80,220)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">慕尼黑协定</text>
+              </g>
+              <g class="focus-node locked" transform="translate(200,220)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">第一次维也纳</text>
+              </g>
+              <g class="focus-node locked" transform="translate(140,280)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">捷克斯洛伐克</text>
+              </g>
+              <g class="focus-node locked" transform="translate(140,370)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">但泽或战争</text>
+              </g>
+              <g class="focus-node locked" transform="translate(140,460)">
+                <rect width="80" height="30" rx="2"/>
+                <text x="40" y="19">白色方案</text>
+              </g>
+            </svg>
+          </div>
+          <div style="font-size:10px;color:var(--tan-dim);margin-top:8px;line-height:1.6;padding:0 4px">
+            <strong style="color:var(--gold)">当前焦点：</strong>苏台德区（剩余 24 天）<br/>
+            完成后将解锁对捷克斯洛伐克的领土主张，并降低英法稳定度。
+          </div>
+        </section>
+
+        <!-- 科研 -->
+        <section class="panel-section" data-panel="research">
+          <div class="panel-title">
+            科研 · 3/4 槽位
+            <span class="badge">理论 +12%</span>
+          </div>
+          <div class="research-list">
+            <div class="research-item" data-tip="<strong>装甲战争学说 III</strong>装甲师组织度 +10%。<div class='tt-meta'>领先 +1 年</div>">
+              <div class="res-head">
+                <div class="res-icon">⚔</div>
+                <div class="res-info">
+                  <h4>装甲战争学说 III</h4>
+                  <div class="meta">陆军学说 · <span class="ahead">领先 1 年</span></div>
+                </div>
+                <div class="res-slot">槽位 1</div>
+              </div>
+              <div class="progress-track"><div class="progress-fill" style="width:62%"></div></div>
+              <div class="progress-meta"><span>完成 62%</span><span>剩余 48 天</span></div>
+            </div>
+
+            <div class="research-item" data-tip="<strong>四号坦克 G 型</strong>解锁新型中型坦克。">
+              <div class="res-head">
+                <div class="res-icon">◈</div>
+                <div class="res-info">
+                  <h4>四号坦克 G 型</h4>
+                  <div class="meta">装甲 · 1938</div>
+                </div>
+                <div class="res-slot">槽位 2</div>
+              </div>
+              <div class="progress-track"><div class="progress-fill" style="width:34%"></div></div>
+              <div class="progress-meta"><span>完成 34%</span><span>剩余 142 天</span></div>
+            </div>
+
+            <div class="research-item" data-tip="<strong>战斗机 BF-109 E 型</strong>新型制空战斗机。">
+              <div class="res-head">
+                <div class="res-icon">✈</div>
+                <div class="res-info">
+                  <h4>Bf 109 E 型</h4>
+                  <div class="meta">空军 · 1938</div>
+                </div>
+                <div class="res-slot">槽位 3</div>
+              </div>
+              <div class="progress-track"><div class="progress-fill" style="width:88%"></div></div>
+              <div class="progress-meta"><span>完成 88%</span><span>剩余 11 天</span></div>
+            </div>
+
+            <div class="research-item" style="border-style:dashed;opacity:.7" data-tip="<strong>空闲槽位</strong>可分配新的科研项目。">
+              <div class="res-head">
+                <div class="res-icon" style="color:var(--tan-dim)">+</div>
+                <div class="res-info">
+                  <h4 style="color:var(--tan-dim)">空闲研究槽</h4>
+                  <div class="meta">点击选择研究方向</div>
+                </div>
+                <div class="res-slot">槽位 4</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 生产 -->
+        <section class="panel-section" data-panel="production">
+          <div class="panel-title">
+            生产队列 · 74 军工厂
+            <span class="badge">效率 +85%</span>
+          </div>
+          <div class="prod-list">
+            <div class="prod-item" data-tip="<strong>四号坦克</strong>15 条生产线。">
+              <div class="prod-icon">◈</div>
+              <div class="prod-main">
+                <div class="prod-name">四号坦克 <span class="qty">×348</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:72%"></div></div>
+                <div class="prod-meta"><span>效率 72%</span><span>15 工厂</span></div>
+              </div>
+              <div class="prod-factory">15<small>工厂</small></div>
+            </div>
+            <div class="prod-item" data-tip="<strong>Bf 109 战斗机</strong>12 条生产线。">
+              <div class="prod-icon">✈</div>
+              <div class="prod-main">
+                <div class="prod-name">Bf 109 战斗机 <span class="qty">×612</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:91%"></div></div>
+                <div class="prod-meta"><span>效率 91%</span><span>12 工厂</span></div>
+              </div>
+              <div class="prod-factory">12<small>工厂</small></div>
+            </div>
+            <div class="prod-item" data-tip="<strong>步兵装备 III 型</strong>24 条生产线。">
+              <div class="prod-icon">⚔</div>
+              <div class="prod-main">
+                <div class="prod-name">步兵装备 III <span class="qty">×8.2K</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:96%"></div></div>
+                <div class="prod-meta"><span>效率 96%</span><span>24 工厂</span></div>
+              </div>
+              <div class="prod-factory">24<small>工厂</small></div>
+            </div>
+            <div class="prod-item" data-tip="<strong>88mm 防空炮</strong>8 条生产线。">
+              <div class="prod-icon">⊕</div>
+              <div class="prod-main">
+                <div class="prod-name">88mm 防空炮 <span class="qty">×86</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:45%"></div></div>
+                <div class="prod-meta"><span>效率 45%</span><span>8 工厂</span></div>
+              </div>
+              <div class="prod-factory">8<small>工厂</small></div>
+            </div>
+            <div class="prod-item" data-tip="<strong>卡车</strong>7 条生产线。">
+              <div class="prod-icon">⌂</div>
+              <div class="prod-main">
+                <div class="prod-name">军用卡车 <span class="qty">×412</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:68%"></div></div>
+                <div class="prod-meta"><span>效率 68%</span><span>7 工厂</span></div>
+              </div>
+              <div class="prod-factory">7<small>工厂</small></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 建造 -->
+        <section class="panel-section" data-panel="construction">
+          <div class="panel-title">
+            建造队列 · 62 民用工厂
+            <span class="badge">+5 队列</span>
+          </div>
+          <div class="prod-list">
+            <div class="prod-item" data-tip="<strong>民用工厂</strong>建造中。">
+              <div class="prod-icon" style="color:#9bc46a">⌂</div>
+              <div class="prod-main">
+                <div class="prod-name">民用工厂 · 柏林 <span class="qty">2/5</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:40%;background:linear-gradient(90deg,#3a5a25,#5a8b3a)"></div></div>
+                <div class="prod-meta"><span>进度 40%</span><span>14 民工</span></div>
+              </div>
+              <div class="prod-factory">14<small>民工</small></div>
+            </div>
+            <div class="prod-item" data-tip="<strong>军用工厂</strong>建造中。">
+              <div class="prod-icon" style="color:#e0c068">◈</div>
+              <div class="prod-main">
+                <div class="prod-name">军用工厂 · 科隆 <span class="qty">1/5</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:22%;background:linear-gradient(90deg,#6a4a1c,#c9a961)"></div></div>
+                <div class="prod-meta"><span>进度 22%</span><span>12 民工</span></div>
+              </div>
+              <div class="prod-factory">12<small>民工</small></div>
+            </div>
+            <div class="prod-item" data-tip="<strong>基础设施</strong>建造中。">
+              <div class="prod-icon">⊞</div>
+              <div class="prod-main">
+                <div class="prod-name">基础设施 · 慕尼黑 <span class="qty">3/5</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:60%;background:linear-gradient(90deg,#3a5a25,#5a8b3a)"></div></div>
+                <div class="prod-meta"><span>进度 60%</span><span>10 民工</span></div>
+              </div>
+              <div class="prod-factory">10<small>民工</small></div>
+            </div>
+            <div class="prod-item" data-tip="<strong>造船厂</strong>建造中。">
+              <div class="prod-icon" style="color:#9bb4d4">⚓</div>
+              <div class="prod-main">
+                <div class="prod-name">造船厂 · 基尔 <span class="qty">2/5</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:38%;background:linear-gradient(90deg,#243d52,#3a6a8b)"></div></div>
+                <div class="prod-meta"><span>进度 38%</span><span>8 民工</span></div>
+              </div>
+              <div class="prod-factory">8<small>民工</small></div>
+            </div>
+            <div class="prod-item" data-tip="<strong>要塞</strong>建造中。">
+              <div class="prod-icon">⊟</div>
+              <div class="prod-main">
+                <div class="prod-name">要塞 · 西墙 <span class="qty">4/10</span></div>
+                <div class="prod-bar"><div class="prod-fill" style="width:38%;background:linear-gradient(90deg,#3a2a14,#7a6238)"></div></div>
+                <div class="prod-meta"><span>进度 38%</span><span>8 民工</span></div>
+              </div>
+              <div class="prod-factory">8<small>民工</small></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ============ 底部栏 ============ -->
+  <footer class="bottombar">
+    <!-- 军队选择 -->
+    <div class="army-select">
+      <h3>陆军 · 92 个师</h3>
+      <div class="army-row">
+        <div class="army-chip selected" data-tip="<strong>第 1 集团军群</strong>14 个师 · 龙德施泰特">
+          <span class="mark"></span><span class="count">14</span><span>1.集团军群</span>
+        </div>
+        <div class="army-chip" data-tip="<strong>第 2 集团军群</strong>18 个师 · 博克">
+          <span class="mark"></span><span class="count">18</span><span>2.集团军群</span>
+        </div>
+      </div>
+      <div class="army-row">
+        <div class="army-chip blue" data-tip="<strong>北方舰队</strong>12 艘舰艇">
+          <span class="mark"></span><span class="count">12</span><span>北方舰队</span>
+        </div>
+        <div class="army-chip green" data-tip="<strong>第 3 航空队</strong>240 架飞机">
+          <span class="mark"></span><span class="count">240</span><span>3.航空队</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 作战计划 -->
+    <div class="battleplans">
+      <div class="plan-card active" data-tip="<strong>白色方案</strong>对波兰全面入侵。<div class='tt-meta'>14 个师 · 准备就绪</div>">
+        <div class="plan-head">
+          <span class="plan-name">白色方案</span>
+          <span class="plan-status ready">就绪</span>
+        </div>
+        <div class="plan-bar"><div class="plan-fill" style="width:100%"></div></div>
+        <div class="plan-meta"><span>准备 100%</span><span>14 师</span></div>
+      </div>
+      <div class="plan-card" data-tip="<strong>黄色方案</strong>对法低地国家入侵计划。">
+        <div class="plan-head">
+          <span class="plan-name">黄色方案</span>
+          <span class="plan-status prep">准备中</span>
+        </div>
+        <div class="plan-bar"><div class="plan-fill" style="width:42%"></div></div>
+        <div class="plan-meta"><span>准备 42%</span><span>22 师</span></div>
+      </div>
+      <div class="plan-card" data-tip="<strong>威悉演习</strong>对挪威丹麦入侵。">
+        <div class="plan-head">
+          <span class="plan-name">威悉演习</span>
+          <span class="plan-status prep">准备中</span>
+        </div>
+        <div class="plan-bar"><div class="plan-fill" style="width:18%"></div></div>
+        <div class="plan-meta"><span>准备 18%</span><span>8 师</span></div>
+      </div>
+      <div class="plan-card" data-tip="<strong>海狮计划</strong>对英国本土登陆（草案）。">
+        <div class="plan-head">
+          <span class="plan-name">海狮计划</span>
+          <span class="plan-status">草案</span>
+        </div>
+        <div class="plan-bar"><div class="plan-fill" style="width:5%"></div></div>
+        <div class="plan-meta"><span>准备 5%</span><span>未分配</span></div>
+      </div>
+    </div>
+
+    <!-- 控制 -->
+    <div class="controls">
+      <div class="control-row">
+        <button class="ctrl-btn primary">执行 白色方案</button>
+      </div>
+      <div class="control-row">
+        <button class="ctrl-btn">外交</button>
+        <button class="ctrl-btn">建造</button>
+        <button class="ctrl-btn">招募</button>
+        <button class="ctrl-btn">日志</button>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<!-- tooltip 容器 -->
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+  // ============ 标签切换 ============
+  const tabs = document.querySelectorAll('.tab');
+  const panels = document.querySelectorAll('.panel-section');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      tabs.forEach(t => t.classList.toggle('active', t === tab));
+      panels.forEach(p => p.classList.toggle('active', p.dataset.panel === target));
+    });
+  });
+
+  // ============ 速度按钮 ============
+  const speedBtns = document.querySelectorAll('.speed-btn');
+  speedBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      speedBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  // ============ 军队选择 ============
+  document.querySelectorAll('.army-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.army-chip').forEach(c => c.classList.remove('selected'));
+      chip.classList.add('selected');
+    });
+  });
+
+  // ============ 计划卡片 ============
+  document.querySelectorAll('.plan-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+    });
+  });
+
+  // ============ 焦点节点点击 ============
+  document.querySelectorAll('.focus-node').forEach(node => {
+    node.addEventListener('click', () => {
+      if (node.classList.contains('locked')) return;
+      document.querySelectorAll('.focus-node').forEach(n => {
+        if (n !== node && n.classList.contains('active')) {
+          n.classList.remove('active');
+          n.classList.add('available');
+        }
+      });
+      if (node.classList.contains('active')) {
+        node.classList.remove('active');
+        node.classList.add('available');
+      } else {
+        node.classList.remove('available');
+        node.classList.add('active');
+      }
+    });
+  });
+
+  // ============ tooltip ============
+  const tip = document.getElementById('tooltip');
+  let tipTarget = null;
+  document.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('mouseenter', e => {
+      tip.innerHTML = el.dataset.tip;
+      tip.classList.add('show');
+      tipTarget = el;
+      moveTip(e);
+    });
+    el.addEventListener('mousemove', moveTip);
+    el.addEventListener('mouseleave', () => {
+      tip.classList.remove('show');
+      tipTarget = null;
+    });
+  });
+  function moveTip(e){
+    const pad = 14;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    const r = tip.getBoundingClientRect();
+    if (x + r.width > window.innerWidth) x = e.clientX - r.width - pad;
+    if (y + r.height > window.innerHeight) y = e.clientY - r.height - pad;
+    tip.style.left = x + 'px';
+    tip.style.top = y + 'px';
+  }
+
+  // ============ 时间推进（模拟） ============
+  const dayEl = document.querySelector('.date-day');
+  const ppEl = document.querySelector('.res:nth-child(1) .res-val');
+  let ppVal = 847;
+  let day = 23, month = 8, year = 1939;
+  const monthDays = [31,28,31,30,31,30,31,31,30,31,30,31];
+  setInterval(() => {
+    const paused = document.querySelector('.speed-btn.pause.active') || document.querySelector('.speed-btn.active[data-speed="0"]');
+    if (paused) return;
+    day++;
+    const md = monthDays[month-1];
+    if (day > md){ day = 1; month++; if (month > 12){ month = 1; year++; } }
+    dayEl.textContent = `${year}.${String(month).padStart(2,'0')}.${String(day).padStart(2,'0')}`;
+    ppVal = Math.min(999, ppVal + 1);
+    ppEl.innerHTML = `${Math.floor(ppVal)} <small>/999</small>`;
+  }, 2200);
+</script>
+</body>
+</html>
